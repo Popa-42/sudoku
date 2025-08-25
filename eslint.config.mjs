@@ -121,7 +121,7 @@ const eslintConfig = [
       "prettier/prettier": [
         "error",
         {
-          endOfLine: "crlf",
+          endOfLine: "lf",
         },
       ],
     },
