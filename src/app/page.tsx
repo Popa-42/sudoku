@@ -1,7 +1,9 @@
 "use client";
 
 import SudokuGrid from "@/components/sudoku/grid";
-import React from "react";
+import React, { useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function Home() {
   // const regions9: number[][] = [
@@ -28,15 +30,17 @@ export default function Home() {
     [0, 2, 0, 1, 0, 3, 0, 0, 0],
   ];
 
-  const [current, setCurrent] = React.useState<[number, number] | undefined>();
-  const [selected, setSelected] = React.useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
+  const [current, setCurrent] = useState<[number, number] | undefined>();
+  const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
+  const [notesMode, setNotesMode] = useState(false);
 
   return (
-    <div>
+    <div className="space-y-4 p-8">
       <SudokuGrid
         presetGrid={sudokuGrid}
         // size={15}
         // regions={regions9}
+        pencilMode={notesMode}
         currentCell={current}
         selectedCells={selected}
         onSelectionChange={setSelected}
@@ -46,6 +50,10 @@ export default function Home() {
           console.log("Clicked:", row, col);
         }}
       />
+      <div className="flex items-center space-x-2">
+        <Switch id="airplane-mode" checked={notesMode} onCheckedChange={setNotesMode} />
+        <Label htmlFor="airplane-mode">Pencil Notes</Label>
+      </div>
     </div>
   );
 }

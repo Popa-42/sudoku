@@ -18,6 +18,7 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   presetGrid?: number[][];
   editedGrid?: number[][];
   pencilGrid?: number[][][];
+  pencilMode?: boolean;
   currentCell?: [number, number];
   selectedCells?: boolean[][];
   onCellSelect?: (info: CellSelectInfo) => void;
@@ -78,6 +79,7 @@ function SudokuGrid({
   presetGrid,
   editedGrid, // kept for API compatibility
   pencilGrid, // kept for API compatibility
+  pencilMode = false,
   currentCell,
   selectedCells,
   onCellSelect,
@@ -105,12 +107,17 @@ function SudokuGrid({
   const [userGrid, setUserGrid] = useState<number[][]>(() =>
     Array.from({ length: size }, () => Array<number>(size).fill(0)),
   );
+  // Maintain pencil notes per cell as flags for digits 1..9 (index 1..9 used)
+  const [pencils, setPencils] = useState<number[][][]>(() =>
+    Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))),
+  );
 
   useEffect(() => {
     setInternalSelection(emptySelection);
     setInternalCurrent(undefined);
     setSelectionStack([]);
     setUserGrid(Array.from({ length: size }, () => Array<number>(size).fill(0)));
+    setPencils(Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))));
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
@@ -290,13 +297,64 @@ function SudokuGrid({
     [selection, size, current, isPreset],
   );
 
+  // Toggle a pencil digit (1..9) for selected cells (or current if none), skipping presets
+  const togglePencilDigit = useCallback(
+    (digit: number) => {
+      if (digit < 1 || digit > 9) return;
+      const targets: [number, number][] = [];
+      if (hasAnySelected(selection)) {
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (selection[r][c]) targets.push([r, c]);
+          }
+        }
+      } else if (current) {
+        targets.push(current);
+      }
+      if (targets.length === 0) return;
+
+      setPencils((prev) => {
+        const next = prev.map((row) => row.map((cell) => cell.slice()));
+        for (const [r, c] of targets) {
+          if (isPreset(r, c)) continue; // cannot pencil on preset
+          next[r][c][digit] = next[r][c][digit] ? 0 : 1;
+        }
+        return next;
+      });
+    },
+    [selection, size, current, isPreset],
+  );
+
+  // Clear all pencil notes in selected/current cells, skipping presets
+  const clearPencils = useCallback(() => {
+    const targets: [number, number][] = [];
+    if (hasAnySelected(selection)) {
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (selection[r][c]) targets.push([r, c]);
+        }
+      }
+    } else if (current) {
+      targets.push(current);
+    }
+    if (targets.length === 0) return;
+
+    setPencils((prev) => {
+      const next = prev.map((row) => row.map((cell) => cell.slice()));
+      for (const [r, c] of targets) {
+        if (isPreset(r, c)) continue;
+        next[r][c].fill(0);
+      }
+      return next;
+    });
+  }, [selection, size, current, isPreset]);
+
   // Move current cell by (dr, dc), clamp within bounds; set single selection and stack accordingly
   const moveCurrent = useCallback(
     (dr: number, dc: number) => {
       let base: [number, number] | undefined = current;
       if (!base) {
         if (hasAnySelected(selection)) {
-          // pick the first selected cell as a base
           outer: for (let r = 0; r < size; r++) {
             for (let c = 0; c < size; c++) {
               if (selection[r][c]) {
@@ -334,7 +392,11 @@ function SudokuGrid({
       // Delete/Backspace or 0 clears
       if (key === "Backspace" || key === "Delete" || key === "0") {
         e.preventDefault();
-        applyValueToSelection(0);
+        if (pencilMode) {
+          clearPencils();
+        } else {
+          applyValueToSelection(0);
+        }
         return;
       }
       // digits 1..9 (numpad included since e.key is the digit character)
@@ -342,11 +404,16 @@ function SudokuGrid({
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
-          applyValueToSelection(val);
+          if (pencilMode) {
+            togglePencilDigit(val);
+          } else {
+            applyValueToSelection(val);
+          }
         }
       }
     },
-    [applyValueToSelection, size, moveCurrent],
+
+    [applyValueToSelection, size, pencilMode, togglePencilDigit, clearPencils, moveCurrent],
   );
 
   return (
@@ -401,6 +468,19 @@ function SudokuGrid({
                 const userVal = userGrid?.[r]?.[c] ?? 0;
                 const displayVal = presetVal > 0 ? presetVal : userVal > 0 ? userVal : "";
 
+                // Build pencil notes string when no main value is shown and cell is not preset
+                let pencilText = "";
+                if (!presetVal && !userVal) {
+                  const flags = pencils?.[r]?.[c];
+                  if (flags) {
+                    let s = "";
+                    for (let d = 1; d <= Math.min(9, size); d++) {
+                      if (flags[d]) s += String(d);
+                    }
+                    pencilText = s;
+                  }
+                }
+
                 return (
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                     <div
@@ -411,7 +491,7 @@ function SudokuGrid({
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         "[--sel:theme(colors.blue.300)]",
                         isCurrent(r, c) && "bg-blue-50",
-                        isPreset(r, c) ? "text-foreground" : "text-blue-700",
+                        isPreset(r, c) ? "text-foreground" : "text-blue-700 font-semibold",
                       )}
                       style={boxShadow ? { boxShadow } : undefined}
                     >
@@ -427,7 +507,12 @@ function SudokuGrid({
                       {selected && bottom_right && (
                         <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-full bg-blue-300" />
                       )}
-                      <span className="absolute">{displayVal}</span>
+                      {/* Main value */}
+                      {displayVal !== "" && <span className="absolute">{displayVal}</span>}
+                      {/* Pencil notes (only when no main value) */}
+                      {displayVal === "" && pencilText && (
+                        <span className="absolute text-xs leading-none font-semibold tracking-tight">{pencilText}</span>
+                      )}
                     </div>
                   </td>
                 );
