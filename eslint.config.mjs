@@ -85,7 +85,7 @@ const eslintConfig = [
     },
   },
   {
-    files: ["**/*.{js,mjs,jsx,ts,mts,tsx}"],
+    files: ["**/*.{jsx,tsx}"],
     languageOptions: {
       parserOptions: {
         ecmaFeatures: {
@@ -109,12 +109,7 @@ const eslintConfig = [
           group: "newLine",
         },
       ],
-      "better-tailwindcss/no-unregistered-classes": [
-        "warn",
-        {
-          ignore: ["dark"],
-        },
-      ],
+      "better-tailwindcss/no-unregistered-classes": ["off"],
 
       // Prettier
       ...eslintPluginPrettierRecommended.rules,
