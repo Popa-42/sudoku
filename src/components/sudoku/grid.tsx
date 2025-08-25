@@ -1,5 +1,5 @@
-import React from "react";
-import { cn } from "@/lib/utils";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { cn, neighbor } from "@/lib/utils";
 
 type RectBox = { rows: number; cols: number };
 
@@ -15,24 +15,67 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   size?: number;
   presetGrid?: number[][];
   editedGrid?: number[][];
-  pencilGrid?: number[][][]; // 3D array for pencil marks
+  pencilGrid?: number[][][];
   currentCell?: [number, number];
   selectedCells?: boolean[][];
   onCellSelect?: (info: CellSelectInfo) => void;
   onSelectionChange?: (selected: boolean[][]) => void;
-  onCurrentCellChange?: (cell: [number, number]) => void;
+  onCurrentCellChange?: (cell: [number, number] | undefined) => void;
   box?: RectBox;
   regions?: number[][];
   cellClassName?: string;
   dividerClassName?: string;
 };
 
+/* ---------- Pure helpers (exported for reuse/testing) ---------- */
+export function createEmptySelection(size: number): boolean[][] {
+  return Array.from({ length: size }, () => Array<boolean>(size).fill(false));
+}
+
+export function normalizeSelection(sel: boolean[][] | undefined, size: number): boolean[][] {
+  if (!sel || sel.length !== size || sel.some((r) => r.length !== size)) {
+    return createEmptySelection(size);
+  }
+  return sel;
+}
+
+export function hasAnySelected(selection: boolean[][]): boolean {
+  return selection.some((row) => row.some(Boolean));
+}
+
+export function buildSingleSelection(size: number, r: number, c: number): boolean[][] {
+  const next = createEmptySelection(size);
+  next[r][c] = true;
+  return next;
+}
+
+export function buildToggledSelection(base: boolean[][], r: number, c: number): boolean[][] {
+  const next = base.map((row) => row.slice());
+  next[r][c] = !next[r][c];
+  return next;
+}
+
+function computeDefaultBox(size: number): RectBox {
+  if (size === 9) return { rows: 3, cols: 3 };
+  const r = Math.floor(Math.sqrt(size));
+  if (r > 1 && size % r === 0) return { rows: r, cols: size / r };
+  return { rows: size, cols: 1 };
+}
+
+function validateRegions(regions: number[][] | undefined, size: number): void {
+  if (!regions) return;
+  if (regions.length !== size || regions.some((row) => row.length !== size)) {
+    throw new Error('Invalid "regions": expected a size×size matrix.');
+  }
+}
+
+/* ---------- Component ---------- */
 function SudokuGrid({
   size = 9,
   className,
   presetGrid,
-  editedGrid,
-  pencilGrid,
+  editedGrid, // kept for API compatibility
+  pencilGrid, // kept for API compatibility
   currentCell,
   selectedCells,
   onCellSelect,
@@ -48,138 +91,219 @@ function SudokuGrid({
     throw new Error("Size must be a positive integer.");
   }
 
-  const emptySel = React.useMemo(() => Array.from({ length: size }, () => Array<boolean>(size).fill(false)), [size]);
+  validateRegions(regions, size);
 
-  const normalizeSel = (sel?: boolean[][]) => {
-    if (!sel || sel.length !== size || sel.some((r) => r.length !== size)) return emptySel;
-    return sel;
-  };
+  const emptySelection = useMemo(() => createEmptySelection(size), [size]);
+  const [internalCurrent, setInternalCurrent] = useState<[number, number] | undefined>(undefined);
+  const [internalSelection, setInternalSelection] = useState<boolean[][]>(emptySelection);
+  const [selectionStack, setSelectionStack] = useState<[number, number][]>([]);
 
-  const [internalCurrent, setInternalCurrent] = React.useState<[number, number] | undefined>(undefined);
-  const [internalSelected, setInternalSelected] = React.useState<boolean[][]>(emptySel);
-
-  React.useEffect(() => {
-    setInternalSelected(emptySel);
+  useEffect(() => {
+    setInternalSelection(emptySelection);
     setInternalCurrent(undefined);
-  }, [size, emptySel]);
+    setSelectionStack([]);
+  }, [size, emptySelection]);
 
-  const cur = currentCell ?? internalCurrent;
-  const sel = normalizeSel(selectedCells ?? internalSelected);
+  const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
 
-  const defaultBox = React.useMemo(() => {
-    if (size === 9) return { rows: 3, cols: 3 };
-    const r = Math.floor(Math.sqrt(size));
-    if (r > 1 && size % r === 0) return { rows: r, cols: size / r };
-    return { rows: size, cols: 1 };
-  }, [size]);
-
-  const activeBox = box ?? defaultBox;
-
-  if (regions) {
-    if (regions.length !== size || regions.some((row) => row.length !== size)) {
-      throw new Error('Invalid "regions": expected a size×size matrix.');
-    }
-  }
-
-  const regionIdAt = (r: number, c: number): number => {
-    if (regions) return regions[r][c];
-    const boxRow = Math.floor(r / activeBox.rows);
-    const boxCol = Math.floor(c / activeBox.cols);
-    return boxRow * Math.ceil(size / activeBox.cols) + boxCol;
-  };
-
-  const cellBorderClasses = (r: number, c: number) => {
-    const base = ["size-10", "border", "border-foreground", "text-center"];
-    const thick: string[] = [];
-
+  const getRegionId = useMemo(() => {
     if (regions) {
-      const id = regionIdAt(r, c);
-      const topChange = r === 0 || regionIdAt(r - 1, c) !== id;
-      const leftChange = c === 0 || regionIdAt(r, c - 1) !== id;
-      const rightChange = c === size - 1 || regionIdAt(r, c + 1) !== id;
-      const bottomChange = r === size - 1 || regionIdAt(r + 1, c) !== id;
-
-      if (topChange) thick.push("border-t-2", dividerClassName);
-      if (leftChange) thick.push("border-l-2", dividerClassName);
-      if (rightChange) thick.push("border-r-2", dividerClassName);
-      if (bottomChange) thick.push("border-b-2", dividerClassName);
-    } else {
-      const topThick = r === 0 || r % activeBox.rows === 0;
-      const leftThick = c === 0 || c % activeBox.cols === 0;
-      const rightThick = c === size - 1 || (c + 1) % activeBox.cols === 0;
-      const bottomThick = r === size - 1 || (r + 1) % activeBox.rows === 0;
-
-      if (topThick) thick.push("border-t-2", dividerClassName);
-      if (leftThick) thick.push("border-l-2", dividerClassName);
-      if (rightThick) thick.push("border-r-2", dividerClassName);
-      if (bottomThick) thick.push("border-b-2", dividerClassName);
+      return (r: number, c: number) => regions[r][c];
     }
+    const colsPerBox = activeBox.cols;
+    const rowsPerBox = activeBox.rows;
+    const boxesPerRow = Math.ceil(size / colsPerBox);
+    return (r: number, c: number) => {
+      const boxRow = Math.floor(r / rowsPerBox);
+      const boxCol = Math.floor(c / colsPerBox);
+      return boxRow * boxesPerRow + boxCol;
+    };
+  }, [regions, activeBox, size]);
 
-    if (cellClassName) base.push(cellClassName);
-    return cn(base.join(" "), thick.join(" "));
-  };
+  const current = currentCell ?? internalCurrent;
+  const selection = normalizeSelection(selectedCells ?? internalSelection, size);
 
-  const buildSingleSelection = (r: number, c: number) => {
-    const next = Array.from({ length: size }, () => Array<boolean>(size).fill(false));
-    next[r][c] = true;
-    return next;
-  };
-
-  const buildToggledSelection = (r: number, c: number) => {
-    const next = sel.map((row) => row.slice());
-    next[r][c] = !next[r][c];
-    return next;
-  };
-
-  const handleClick = (r: number, c: number) => (event: React.MouseEvent<HTMLDivElement>) => {
-    const isCtrl = event.ctrlKey; // only Ctrl, no Meta/Cmd
-    const nextSel = isCtrl ? buildToggledSelection(r, c) : buildSingleSelection(r, c);
-
-    if (!selectedCells) setInternalSelected(nextSel);
-    onSelectionChange?.(nextSel);
-
-    // Do not change current on Ctrl, if clicked cell is already true
-    if (!isCtrl || !sel?.[r]?.[c]) {
-      const nextCur: [number, number] = [r, c];
-      if (!currentCell) setInternalCurrent(nextCur);
-      onCurrentCellChange?.(nextCur);
+  useEffect(() => {
+    if (!hasAnySelected(selection)) {
+      if (!currentCell) setInternalCurrent(undefined);
+      setSelectionStack([]);
+      onCurrentCellChange?.(undefined);
     }
+  }, [selection, currentCell, onCurrentCellChange]);
 
-    onCellSelect?.({
-      row: r,
-      col: c,
-      current: (isCtrl ? cur : [r, c]) as [number, number],
-      selected: nextSel,
-      event,
-    });
-  };
+  const isSelected = useCallback((r: number, c: number) => !!selection?.[r]?.[c], [selection]);
+  const isCurrent = useCallback((r: number, c: number) => !!current && current[0] === r && current[1] === c, [current]);
 
-  const isSelected = (r: number, c: number) => !!sel?.[r]?.[c];
-  const isCurrent = (r: number, c: number) => !!cur && cur[0] === r && cur[1] === c;
+  const cellBorderClasses = useCallback(
+    (r: number, c: number) => {
+      const base: string[] = ["size-10", "border", "border-foreground", "text-center"];
+      if (cellClassName) base.push(cellClassName);
+
+      const thick: string[] = [];
+      if (regions) {
+        const id = getRegionId(r, c);
+        const topChange = r === 0 || getRegionId(r - 1, c) !== id;
+        const leftChange = c === 0 || getRegionId(r, c - 1) !== id;
+        const rightChange = c === size - 1 || getRegionId(r, c + 1) !== id;
+        const bottomChange = r === size - 1 || getRegionId(r + 1, c) !== id;
+
+        if (topChange) thick.push("border-t-2", dividerClassName);
+        if (leftChange) thick.push("border-l-2", dividerClassName);
+        if (rightChange) thick.push("border-r-2", dividerClassName);
+        if (bottomChange) thick.push("border-b-2", dividerClassName);
+      } else {
+        const topThick = r === 0 || r % activeBox.rows === 0;
+        const leftThick = c === 0 || c % activeBox.cols === 0;
+        const rightThick = c === size - 1 || (c + 1) % activeBox.cols === 0;
+        const bottomThick = r === size - 1 || (r + 1) % activeBox.rows === 0;
+
+        if (topThick) thick.push("border-t-2", dividerClassName);
+        if (leftThick) thick.push("border-l-2", dividerClassName);
+        if (rightThick) thick.push("border-r-2", dividerClassName);
+        if (bottomThick) thick.push("border-b-2", dividerClassName);
+      }
+
+      return cn(base.join(" "), thick.join(" "));
+    },
+    [regions, getRegionId, size, activeBox, dividerClassName, cellClassName],
+  );
+
+  const applySelectionChange = useCallback(
+    (nextSelection: boolean[][]) => {
+      if (!selectedCells) setInternalSelection(nextSelection);
+      onSelectionChange?.(nextSelection);
+    },
+    [selectedCells, onSelectionChange],
+  );
+
+  const applyCurrentChange = useCallback(
+    (nextCurrent: [number, number] | undefined) => {
+      if (!currentCell) setInternalCurrent(nextCurrent);
+      onCurrentCellChange?.(nextCurrent);
+    },
+    [currentCell, onCurrentCellChange],
+  );
+
+  const handleClick = useCallback(
+    (r: number, c: number) => (event: React.MouseEvent<HTMLDivElement>) => {
+      const ctrlMode = event.ctrlKey;
+      const alreadySelected = isSelected(r, c);
+      const alreadyCurrent = isCurrent(r, c);
+
+      const nextSelection = ctrlMode ? buildToggledSelection(selection, r, c) : buildSingleSelection(size, r, c);
+
+      applySelectionChange(nextSelection);
+
+      let nextStack: [number, number][];
+      if (!ctrlMode) {
+        nextStack = [[r, c]];
+      } else if (alreadySelected) {
+        nextStack = selectionStack.filter(([rr, cc]) => rr !== r || cc !== c);
+      } else {
+        const filtered = selectionStack.filter(([rr, cc]) => rr !== r || cc !== c);
+        nextStack = [...filtered, [r, c]];
+      }
+
+      let nextCurrent: [number, number] | undefined = current;
+      if (!ctrlMode) {
+        nextCurrent = [r, c];
+      } else if (!alreadySelected) {
+        nextCurrent = [r, c];
+      } else if (alreadyCurrent) {
+        nextCurrent = nextStack[nextStack.length - 1];
+      }
+
+      if (!hasAnySelected(nextSelection)) {
+        nextCurrent = undefined;
+        nextStack = [];
+      }
+
+      applyCurrentChange(nextCurrent);
+      setSelectionStack(nextStack);
+
+      onCellSelect?.({
+        row: r,
+        col: c,
+        current: (nextCurrent ?? current) as [number, number],
+        selected: nextSelection,
+        event,
+      });
+    },
+    [
+      isSelected,
+      isCurrent,
+      selection,
+      size,
+      applySelectionChange,
+      selectionStack,
+      current,
+      applyCurrentChange,
+      onCellSelect,
+    ],
+  );
 
   return (
     <table role="grid" aria-rowcount={size} aria-colcount={size}>
       <tbody className={cn("border-2 border-foreground", className)} {...props}>
         {Array.from({ length: size }).map((_, r) => (
           <tr key={r} role="row">
-            {Array.from({ length: size }).map((_, c) => (
-              <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
-                <div
-                  onClick={handleClick(r, c)}
-                  aria-selected={isSelected(r, c)}
-                  className={cn(
-                    "flex size-full cursor-pointer items-center justify-center select-none",
-                    // selection border on the inner box (keeps outer grid dividers intact)
-                    "border-2",
-                    isSelected(r, c) ? "border-primary" : "border-transparent",
-                    // subtle current highlight
-                    isCurrent(r, c) && "bg-yellow-50",
-                  )}
-                >
-                  {presetGrid && presetGrid[r] && presetGrid[r][c] ? presetGrid[r][c] : ""}
-                </div>
-              </td>
-            ))}
+            {Array.from({ length: size }).map((_, c) => {
+              const top =
+                r > 0 &&
+                isSelected(
+                  neighbor({ row: r, col: c }, -1, 0, size).row,
+                  neighbor({ row: r, col: c }, -1, 0, size).col,
+                );
+              const right =
+                c < size - 1 &&
+                isSelected(neighbor({ row: r, col: c }, 0, 1, size).row, neighbor({ row: r, col: c }, 0, 1, size).col);
+              const bottom =
+                r < size - 1 &&
+                isSelected(neighbor({ row: r, col: c }, 1, 0, size).row, neighbor({ row: r, col: c }, 1, 0, size).col);
+              const left =
+                c > 0 &&
+                isSelected(
+                  neighbor({ row: r, col: c }, 0, -1, size).row,
+                  neighbor({ row: r, col: c }, 0, -1, size).col,
+                );
+
+              const top_left = c > 0 && r > 0 && !isSelected(r - 1, c - 1) && top && left;
+              const top_right = c < size - 1 && r > 0 && !isSelected(r - 1, c + 1) && top && right;
+              const bottom_left = c > 0 && r < size - 1 && !isSelected(r + 1, c - 1) && bottom && left;
+              const bottom_right = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && bottom && right;
+
+              return (
+                <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
+                  <div
+                    onClick={handleClick(r, c)}
+                    aria-selected={isSelected(r, c)}
+                    className={cn(
+                      "relative flex size-full cursor-pointer items-center justify-center select-none",
+                      isSelected(r, c) ? "border-4 border-blue-300" : "border-transparent",
+                      top && "border-t-0",
+                      right && "border-r-0",
+                      bottom && "border-b-0",
+                      left && "border-l-0",
+                      isCurrent(r, c) && "bg-blue-50",
+                    )}
+                  >
+                    {isSelected(r, c) && top_left && (
+                      <span className="absolute top-0 left-0 size-[4px] rounded-br-full bg-blue-300" />
+                    )}
+                    {isSelected(r, c) && top_right && (
+                      <span className="absolute top-0 right-0 size-[4px] rounded-bl-full bg-blue-300" />
+                    )}
+                    {isSelected(r, c) && bottom_left && (
+                      <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-full bg-blue-300" />
+                    )}
+                    {isSelected(r, c) && bottom_right && (
+                      <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-full bg-blue-300" />
+                    )}
+                    {presetGrid?.[r]?.[c] ?? ""}
+                  </div>
+                </td>
+              );
+            })}
           </tr>
         ))}
       </tbody>
