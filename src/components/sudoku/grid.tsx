@@ -290,9 +290,47 @@ function SudokuGrid({
     [selection, size, current, isPreset],
   );
 
+  // Move current cell by (dr, dc), clamp within bounds; set single selection and stack accordingly
+  const moveCurrent = useCallback(
+    (dr: number, dc: number) => {
+      let base: [number, number] | undefined = current;
+      if (!base) {
+        if (hasAnySelected(selection)) {
+          // pick the first selected cell as a base
+          outer: for (let r = 0; r < size; r++) {
+            for (let c = 0; c < size; c++) {
+              if (selection[r][c]) {
+                base = [r, c];
+                break outer;
+              }
+            }
+          }
+        } else {
+          base = [0, 0];
+        }
+      }
+      const n = neighbor({ row: base![0], col: base![1] }, dr, dc, size);
+      const next: [number, number] = [n.row, n.col];
+      applyCurrentChange(next);
+      const nextSel = buildSingleSelection(size, next[0], next[1]);
+      applySelectionChange(nextSel);
+      setSelectionStack([next]);
+    },
+    [current, selection, size, applyCurrentChange, applySelectionChange],
+  );
+
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key;
+      // Arrow navigation
+      if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
+        e.preventDefault();
+        if (key === "ArrowUp") moveCurrent(-1, 0);
+        if (key === "ArrowDown") moveCurrent(1, 0);
+        if (key === "ArrowLeft") moveCurrent(0, -1);
+        if (key === "ArrowRight") moveCurrent(0, 1);
+        return;
+      }
       // Delete/Backspace or 0 clears
       if (key === "Backspace" || key === "Delete" || key === "0") {
         e.preventDefault();
@@ -308,7 +346,7 @@ function SudokuGrid({
         }
       }
     },
-    [applyValueToSelection, size],
+    [applyValueToSelection, size, moveCurrent],
   );
 
   return (
