@@ -3,36 +3,75 @@ import { cn } from "@/lib/utils";
 
 type RectBox = { rows: number; cols: number };
 
+type CellSelectInfo = {
+  row: number;
+  col: number;
+  current: [number, number];
+  selected: boolean[][];
+  event: React.MouseEvent<HTMLDivElement>;
+};
+
 type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   size?: number;
-  grid?: number[][];
-  box?: RectBox; // Optional rectangular sub-box layout
-  regions?: number[][]; // Optional region map (overrides `box` if provided)
-  cellClassName?: string; // Optional per-cell class
-  dividerClassName?: string; // Class used for thick borders (e.g., color/width)
+  presetGrid?: number[][];
+  editedGrid?: number[][];
+  pencilGrid?: number[][][]; // 3D array for pencil marks
+  currentCell?: [number, number];
+  selectedCells?: boolean[][];
+  onCellSelect?: (info: CellSelectInfo) => void;
+  onSelectionChange?: (selected: boolean[][]) => void;
+  onCurrentCellChange?: (cell: [number, number]) => void;
+  box?: RectBox;
+  regions?: number[][];
+  cellClassName?: string;
+  dividerClassName?: string;
 };
 
 function SudokuGrid({
   size = 9,
   className,
-  grid,
+  presetGrid,
+  editedGrid,
+  pencilGrid,
+  currentCell,
+  selectedCells,
+  onCellSelect,
+  onSelectionChange,
+  onCurrentCellChange,
   box,
   regions,
   cellClassName,
-  dividerClassName = "border-foreground", // color class for thick borders
+  dividerClassName = "border-foreground",
   ...props
 }: SudokuGridProps) {
   if (!Number.isInteger(size) || size <= 0) {
     throw new Error("Size must be a positive integer.");
   }
 
-  // Default rectangular boxes (e.g., 3x3 for 9)
-  const defaultBox = (() => {
+  const emptySel = React.useMemo(() => Array.from({ length: size }, () => Array<boolean>(size).fill(false)), [size]);
+
+  const normalizeSel = (sel?: boolean[][]) => {
+    if (!sel || sel.length !== size || sel.some((r) => r.length !== size)) return emptySel;
+    return sel;
+  };
+
+  const [internalCurrent, setInternalCurrent] = React.useState<[number, number] | undefined>(undefined);
+  const [internalSelected, setInternalSelected] = React.useState<boolean[][]>(emptySel);
+
+  React.useEffect(() => {
+    setInternalSelected(emptySel);
+    setInternalCurrent(undefined);
+  }, [size, emptySel]);
+
+  const cur = currentCell ?? internalCurrent;
+  const sel = normalizeSel(selectedCells ?? internalSelected);
+
+  const defaultBox = React.useMemo(() => {
     if (size === 9) return { rows: 3, cols: 3 };
     const r = Math.floor(Math.sqrt(size));
     if (r > 1 && size % r === 0) return { rows: r, cols: size / r };
     return { rows: size, cols: 1 };
-  })();
+  }, [size]);
 
   const activeBox = box ?? defaultBox;
 
@@ -50,7 +89,7 @@ function SudokuGrid({
   };
 
   const cellBorderClasses = (r: number, c: number) => {
-    const base = ["h-10", "w-10", "border", "border-foreground", "text-center"];
+    const base = ["size-10", "border", "border-foreground", "text-center"];
     const thick: string[] = [];
 
     if (regions) {
@@ -80,14 +119,65 @@ function SudokuGrid({
     return cn(base.join(" "), thick.join(" "));
   };
 
+  const buildSingleSelection = (r: number, c: number) => {
+    const next = Array.from({ length: size }, () => Array<boolean>(size).fill(false));
+    next[r][c] = true;
+    return next;
+  };
+
+  const buildToggledSelection = (r: number, c: number) => {
+    const next = sel.map((row) => row.slice());
+    next[r][c] = !next[r][c];
+    return next;
+  };
+
+  const handleClick = (r: number, c: number) => (event: React.MouseEvent<HTMLDivElement>) => {
+    const isCtrl = event.ctrlKey; // only Ctrl, no Meta/Cmd
+    const nextSel = isCtrl ? buildToggledSelection(r, c) : buildSingleSelection(r, c);
+
+    if (!selectedCells) setInternalSelected(nextSel);
+    onSelectionChange?.(nextSel);
+
+    // Do not change current on Ctrl, if clicked cell is already true
+    if (!isCtrl || !sel?.[r]?.[c]) {
+      const nextCur: [number, number] = [r, c];
+      if (!currentCell) setInternalCurrent(nextCur);
+      onCurrentCellChange?.(nextCur);
+    }
+
+    onCellSelect?.({
+      row: r,
+      col: c,
+      current: (isCtrl ? cur : [r, c]) as [number, number],
+      selected: nextSel,
+      event,
+    });
+  };
+
+  const isSelected = (r: number, c: number) => !!sel?.[r]?.[c];
+  const isCurrent = (r: number, c: number) => !!cur && cur[0] === r && cur[1] === c;
+
   return (
-    <table>
+    <table role="grid" aria-rowcount={size} aria-colcount={size}>
       <tbody className={cn("border-2 border-foreground", className)} {...props}>
         {Array.from({ length: size }).map((_, r) => (
-          <tr key={r}>
+          <tr key={r} role="row">
             {Array.from({ length: size }).map((_, c) => (
-              <td key={c} className={cellBorderClasses(r, c)}>
-                {/* Cell */}
+              <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
+                <div
+                  onClick={handleClick(r, c)}
+                  aria-selected={isSelected(r, c)}
+                  className={cn(
+                    "flex size-full cursor-pointer items-center justify-center select-none",
+                    // selection border on the inner box (keeps outer grid dividers intact)
+                    "border-2",
+                    isSelected(r, c) ? "border-primary" : "border-transparent",
+                    // subtle current highlight
+                    isCurrent(r, c) && "bg-yellow-50",
+                  )}
+                >
+                  {presetGrid && presetGrid[r] && presetGrid[r][c] ? presetGrid[r][c] : ""}
+                </div>
               </td>
             ))}
           </tr>
