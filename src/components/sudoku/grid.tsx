@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
 
+// Remove the static inset shadow mapping; we'll compute a style.boxShadow instead
+
 type RectBox = { rows: number; cols: number };
 
 type CellSelectInfo = {
@@ -272,34 +274,42 @@ function SudokuGrid({
               const bottom_left = c > 0 && r < size - 1 && !isSelected(r + 1, c - 1) && bottom && left;
               const bottom_right = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && bottom && right;
 
+              // Build inline boxShadow for selected cells; use CSS var --sel for color set via Tailwind arbitrary property
+              const boxShadowParts: string[] = [];
+              const selected = isSelected(r, c);
+              if (selected) {
+                if (!left) boxShadowParts.push("inset 4px 0 0 0 var(--sel)");
+                if (!right) boxShadowParts.push("inset -4px 0 0 0 var(--sel)");
+                if (!top) boxShadowParts.push("inset 0 4px 0 0 var(--sel)");
+                if (!bottom) boxShadowParts.push("inset 0 -4px 0 0 var(--sel)");
+              }
+              const boxShadow = boxShadowParts.join(", ");
+
               return (
                 <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                   <div
                     onClick={handleClick(r, c)}
-                    aria-selected={isSelected(r, c)}
+                    aria-selected={selected}
                     className={cn(
-                      "relative flex size-full cursor-pointer items-center justify-center select-none",
-                      isSelected(r, c) ? "border-4 border-blue-300" : "border-transparent",
-                      top && "border-t-0",
-                      right && "border-r-0",
-                      bottom && "border-b-0",
-                      left && "border-l-0",
+                      "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
+                      "[--sel:theme(colors.blue.300)]",
                       isCurrent(r, c) && "bg-blue-50",
                     )}
+                    style={boxShadow ? { boxShadow } : undefined}
                   >
-                    {isSelected(r, c) && top_left && (
+                    {selected && top_left && (
                       <span className="absolute top-0 left-0 size-[4px] rounded-br-full bg-blue-300" />
                     )}
-                    {isSelected(r, c) && top_right && (
+                    {selected && top_right && (
                       <span className="absolute top-0 right-0 size-[4px] rounded-bl-full bg-blue-300" />
                     )}
-                    {isSelected(r, c) && bottom_left && (
+                    {selected && bottom_left && (
                       <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-full bg-blue-300" />
                     )}
-                    {isSelected(r, c) && bottom_right && (
+                    {selected && bottom_right && (
                       <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-full bg-blue-300" />
                     )}
-                    {presetGrid?.[r]?.[c] ?? ""}
+                    <span className="absolute">{presetGrid?.[r]?.[c] || ""}</span>
                   </div>
                 </td>
               );
