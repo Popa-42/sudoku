@@ -24,8 +24,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next.js Template",
-  description: "A Next.js template repository.",
+  title: "Sudoku",
+  description: "Sudoku",
   icons: [
     {
       rel: "icon",
