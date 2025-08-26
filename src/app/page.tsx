@@ -2,8 +2,8 @@
 
 import SudokuGrid from "@/components/sudoku/grid";
 import React, { useState } from "react";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Toggle } from "@/components/ui/toggle";
+import { Binary, Pencil } from "lucide-react";
 
 export default function Home() {
   // const regions9: number[][] = [
@@ -32,7 +32,7 @@ export default function Home() {
 
   const [current, setCurrent] = useState<[number, number] | undefined>();
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
-  const [notesMode, setNotesMode] = useState(false);
+  const [notesMode, setNotesMode] = useState<"center" | "corner" | null>(null);
 
   return (
     <div className="space-y-4 p-8">
@@ -50,9 +50,23 @@ export default function Home() {
           console.log("Clicked:", row, col);
         }}
       />
-      <div className="flex items-center space-x-2">
-        <Switch id="airplane-mode" checked={notesMode} onCheckedChange={setNotesMode} />
-        <Label htmlFor="airplane-mode">Pencil Notes</Label>
+      <div className="flex gap-2 rounded-md border p-2">
+        <Toggle
+          variant="outline"
+          aria-label="Toggle Center Notes Mode"
+          pressed={notesMode === "center"}
+          onPressedChange={(value) => setNotesMode(value ? "center" : null)}
+        >
+          <Pencil />
+        </Toggle>
+        <Toggle
+          variant="outline"
+          aria-label="Toggle Corner Notes Mode"
+          pressed={notesMode === "corner"}
+          onPressedChange={(value) => setNotesMode(value ? "corner" : null)}
+        >
+          <Binary />
+        </Toggle>
       </div>
     </div>
   );

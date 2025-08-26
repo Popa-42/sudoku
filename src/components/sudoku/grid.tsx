@@ -1,76 +1,39 @@
+// src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
-
-// Remove the static inset shadow mapping; we'll compute a style.boxShadow instead
-
-type RectBox = { rows: number; cols: number };
-
-type CellSelectInfo = {
-  row: number;
-  col: number;
-  current: [number, number];
-  selected: boolean[][];
-  event: React.MouseEvent<HTMLDivElement>;
-};
+import { CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
+import {
+  buildSingleSelection,
+  computeDefaultBox,
+  createEmptySelection,
+  hasAnySelected,
+  indexInStack,
+  normalizeSelection,
+  pushIfAbsent,
+  removeFromStack,
+  sameCell,
+  stackFromMatrix,
+  validateRegions,
+} from "@/components/sudoku/utils/selection";
+import { Cell, CellSelectInfo, RectBox } from "@/types";
+import { createDigitCube, createNumberGrid, selectionTargets } from "@/components/sudoku/utils/grids";
 
 type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   size?: number;
   presetGrid?: number[][];
   editedGrid?: number[][];
   pencilGrid?: number[][][];
-  pencilMode?: boolean;
-  currentCell?: [number, number];
+  pencilMode?: "center" | "corner" | null;
+  currentCell?: Cell;
   selectedCells?: boolean[][];
   onCellSelect?: (info: CellSelectInfo) => void;
   onSelectionChange?: (selected: boolean[][]) => void;
-  onCurrentCellChange?: (cell: [number, number] | undefined) => void;
+  onCurrentCellChange?: (cell: Cell | undefined) => void;
   box?: RectBox;
   regions?: number[][];
   cellClassName?: string;
   dividerClassName?: string;
 };
-
-/* ---------- Pure helpers (exported for reuse/testing) ---------- */
-export function createEmptySelection(size: number): boolean[][] {
-  return Array.from({ length: size }, () => Array<boolean>(size).fill(false));
-}
-
-export function normalizeSelection(sel: boolean[][] | undefined, size: number): boolean[][] {
-  if (!sel || sel.length !== size || sel.some((r) => r.length !== size)) {
-    return createEmptySelection(size);
-  }
-  return sel;
-}
-
-export function hasAnySelected(selection: boolean[][]): boolean {
-  return selection.some((row) => row.some(Boolean));
-}
-
-export function buildSingleSelection(size: number, r: number, c: number): boolean[][] {
-  const next = createEmptySelection(size);
-  next[r][c] = true;
-  return next;
-}
-
-export function buildToggledSelection(base: boolean[][], r: number, c: number): boolean[][] {
-  const next = base.map((row) => row.slice());
-  next[r][c] = !next[r][c];
-  return next;
-}
-
-function computeDefaultBox(size: number): RectBox {
-  if (size === 9) return { rows: 3, cols: 3 };
-  const r = Math.floor(Math.sqrt(size));
-  if (r > 1 && size % r === 0) return { rows: r, cols: size / r };
-  return { rows: size, cols: 1 };
-}
-
-function validateRegions(regions: number[][] | undefined, size: number): void {
-  if (!regions) return;
-  if (regions.length !== size || regions.some((row) => row.length !== size)) {
-    throw new Error('Invalid "regions": expected a size×size matrix.');
-  }
-}
 
 /* ---------- Component ---------- */
 function SudokuGrid({
@@ -79,7 +42,7 @@ function SudokuGrid({
   presetGrid,
   editedGrid, // kept for API compatibility
   pencilGrid, // kept for API compatibility
-  pencilMode = false,
+  pencilMode = null,
   currentCell,
   selectedCells,
   onCellSelect,
@@ -91,41 +54,45 @@ function SudokuGrid({
   dividerClassName = "border-foreground",
   ...props
 }: SudokuGridProps) {
-  if (!Number.isInteger(size) || size <= 0) {
-    throw new Error("Size must be a positive integer.");
-  }
-
+  if (!Number.isInteger(size) || size <= 0) throw new Error("Size must be a positive integer.");
   validateRegions(regions, size);
 
   const emptySelection = useMemo(() => createEmptySelection(size), [size]);
-  const [internalCurrent, setInternalCurrent] = useState<[number, number] | undefined>(undefined);
-  const [internalSelection, setInternalSelection] = useState<boolean[][]>(emptySelection);
-  const [selectionStack, setSelectionStack] = useState<[number, number][]>([]);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // Maintain user-entered values separate from preset grid
-  const [userGrid, setUserGrid] = useState<number[][]>(() =>
-    Array.from({ length: size }, () => Array<number>(size).fill(0)),
-  );
-  // Maintain pencil notes per cell as flags for digits 1..9 (index 1..9 used)
-  const [pencils, setPencils] = useState<number[][][]>(() =>
-    Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))),
-  );
+  const [internalCurrent, setInternalCurrent] = useState<Cell | undefined>(undefined);
+  const [internalSelection, setInternalSelection] = useState<boolean[][]>(emptySelection);
+  const [selectionStack, setSelectionStack] = useState<Cell[]>([]);
+
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const gridRef = useRef<HTMLTableSectionElement | null>(null);
+  const draggingRef = useRef<boolean>(false);
+  const dragRef = useRef<{
+    mode: "rect" | "paint-add" | "paint-erase";
+    start: Cell;
+    base: boolean[][];
+    working: boolean[][];
+    visited: Set<number>;
+    last?: Cell;
+  } | null>(null);
+
+  // user-entered values and notes (sized to "size", not hardcoded 9)
+  const [userGrid, setUserGrid] = useState<number[][]>(() => createNumberGrid(size));
+  const [pencils, setPencils] = useState<number[][][]>(() => createDigitCube(size));
+  const [cornerPencils, setCornerPencils] = useState<number[][][]>(() => createDigitCube(size));
 
   useEffect(() => {
     setInternalSelection(emptySelection);
     setInternalCurrent(undefined);
     setSelectionStack([]);
-    setUserGrid(Array.from({ length: size }, () => Array<number>(size).fill(0)));
-    setPencils(Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))));
+    setUserGrid(createNumberGrid(size));
+    setPencils(createDigitCube(size));
+    setCornerPencils(createDigitCube(size));
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
 
   const getRegionId = useMemo(() => {
-    if (regions) {
-      return (r: number, c: number) => regions[r][c];
-    }
+    if (regions) return (r: number, c: number) => regions[r][c];
     const colsPerBox = activeBox.cols;
     const rowsPerBox = activeBox.rows;
     const boxesPerRow = Math.ceil(size / colsPerBox);
@@ -139,14 +106,7 @@ function SudokuGrid({
   const current = currentCell ?? internalCurrent;
   const selection = normalizeSelection(selectedCells ?? internalSelection, size);
 
-  // Helper to tell if a cell is a preset (immutable)
-  const isPreset = useCallback(
-    (r: number, c: number) => {
-      const v = presetGrid?.[r]?.[c] ?? 0;
-      return v > 0;
-    },
-    [presetGrid],
-  );
+  const isPreset = useCallback((r: number, c: number) => (presetGrid?.[r]?.[c] ?? 0) > 0, [presetGrid]);
 
   useEffect(() => {
     if (!hasAnySelected(selection)) {
@@ -161,7 +121,7 @@ function SudokuGrid({
 
   const cellBorderClasses = useCallback(
     (r: number, c: number) => {
-      const base: string[] = ["size-10", "border", "border-foreground", "text-center"];
+      const base: string[] = ["size-10", "border", "border-foreground", "text-center", "select-none", "cursor-pointer"];
       if (cellClassName) base.push(cellClassName);
 
       const thick: string[] = [];
@@ -202,176 +162,229 @@ function SudokuGrid({
   );
 
   const applyCurrentChange = useCallback(
-    (nextCurrent: [number, number] | undefined) => {
+    (nextCurrent: Cell | undefined) => {
       if (!currentCell) setInternalCurrent(nextCurrent);
       onCurrentCellChange?.(nextCurrent);
     },
     [currentCell, onCurrentCellChange],
   );
 
-  const handleClick = useCallback(
-    (r: number, c: number) => (event: React.MouseEvent<HTMLDivElement>) => {
-      const ctrlMode = event.ctrlKey;
-      const alreadySelected = isSelected(r, c);
-      const alreadyCurrent = isCurrent(r, c);
-
-      const nextSelection = ctrlMode ? buildToggledSelection(selection, r, c) : buildSingleSelection(size, r, c);
-
-      applySelectionChange(nextSelection);
-
-      let nextStack: [number, number][];
-      if (!ctrlMode) {
-        nextStack = [[r, c]];
-      } else if (alreadySelected) {
-        nextStack = selectionStack.filter(([rr, cc]) => rr !== r || cc !== c);
-      } else {
-        const filtered = selectionStack.filter(([rr, cc]) => rr !== r || cc !== c);
-        nextStack = [...filtered, [r, c]];
-      }
-
-      let nextCurrent: [number, number] | undefined = current;
-      if (!ctrlMode) {
-        nextCurrent = [r, c];
-      } else if (!alreadySelected) {
-        nextCurrent = [r, c];
-      } else if (alreadyCurrent) {
-        nextCurrent = nextStack[nextStack.length - 1];
-      }
-
-      if (!hasAnySelected(nextSelection)) {
-        nextCurrent = undefined;
-        nextStack = [];
-      }
-
-      applyCurrentChange(nextCurrent);
-      setSelectionStack(nextStack);
-
-      // Focus the wrapper so subsequent key presses are captured
-      wrapperRef.current?.focus();
-
-      onCellSelect?.({
-        row: r,
-        col: c,
-        current: (nextCurrent ?? current) as [number, number],
-        selected: nextSelection,
-        event,
-      });
+  // pointer → cell mapping
+  const clampIndex = useCallback((v: number, max: number) => Math.max(0, Math.min(max - 1, v)), []);
+  const getCellFromPointer = useCallback(
+    (e: React.PointerEvent | PointerEvent): Cell | undefined => {
+      const el = gridRef.current;
+      if (!el) return undefined;
+      const rect = el.getBoundingClientRect();
+      const x = (e as React.PointerEvent).clientX - rect.left;
+      const y = (e as React.PointerEvent).clientY - rect.top;
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return undefined;
+      const c = clampIndex(Math.floor((x / rect.width) * size), size);
+      const r = clampIndex(Math.floor((y / rect.height) * size), size);
+      return [r, c];
     },
-    [
-      isSelected,
-      isCurrent,
-      selection,
-      size,
-      applySelectionChange,
-      selectionStack,
-      current,
-      applyCurrentChange,
-      onCellSelect,
-    ],
+    [size, clampIndex],
   );
 
-  // Apply a value (1..size) or clear (0) to selected cells (or current if none selected), skipping presets
-  const applyValueToSelection = useCallback(
-    (value: number) => {
-      const targets: [number, number][] = [];
-      if (hasAnySelected(selection)) {
-        for (let r = 0; r < size; r++) {
-          for (let c = 0; c < size; c++) {
-            if (selection[r][c]) targets.push([r, c]);
+  // pointer selection
+  const onPointerDownGrid = useCallback(
+    (e: React.PointerEvent<HTMLTableSectionElement>) => {
+      const cell = getCellFromPointer(e);
+      if (!cell) return;
+      wrapperRef.current?.focus();
+      const [r, c] = cell;
+
+      const isCtrl = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+
+      const base = isCtrl ? selection.map((row) => row.slice()) : createEmptySelection(size);
+      let working = base.map((row) => row.slice());
+
+      const mode: "rect" | "paint-add" | "paint-erase" = isCtrl
+        ? base[r][c]
+          ? "paint-erase"
+          : "paint-add"
+        : isShift
+          ? "rect"
+          : "paint-add";
+
+      const info = {
+        mode,
+        start: [r, c] as Cell,
+        base,
+        working,
+        visited: new Set<number>([r * size + c]),
+        last: [r, c] as Cell,
+      };
+
+      if (mode === "rect") {
+        working = createEmptySelection(size);
+        working[r][c] = true;
+        info.working = working;
+        setSelectionStack([[r, c]]);
+        applySelectionChange(working);
+        applyCurrentChange([r, c]);
+      } else if (mode === "paint-add") {
+        working[r][c] = true;
+        info.working = working;
+        setSelectionStack(isCtrl ? (prev) => pushIfAbsent([...prev], [r, c]) : [[r, c]]);
+        applySelectionChange(working.map((row) => row.slice()));
+        applyCurrentChange([r, c]);
+      } else {
+        working[r][c] = false;
+        info.working = working;
+        setSelectionStack((prev) => removeFromStack(prev, [r, c]));
+        applySelectionChange(working.map((row) => row.slice()));
+        const prevIdx = indexInStack(selectionStack, [r, c]);
+        const before = selectionStack.filter(([rr, cc]) => rr !== r || cc !== c);
+        const target = prevIdx > 0 ? selectionStack[prevIdx - 1] : before[before.length - 1];
+        applyCurrentChange(target);
+      }
+
+      dragRef.current = info;
+      draggingRef.current = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    [selection, size, applySelectionChange, applyCurrentChange, getCellFromPointer, selectionStack],
+  );
+
+  const onPointerMoveGrid = useCallback(
+    (e: React.PointerEvent<HTMLTableSectionElement>) => {
+      if (!dragRef.current) return;
+      const cell = getCellFromPointer(e);
+      if (!cell) return;
+      const [r, c] = cell;
+      const info = dragRef.current;
+
+      if (info.mode === "rect") {
+        const [sr, sc] = info.start;
+        const r0 = Math.min(sr, r),
+          r1 = Math.max(sr, r);
+        const c0 = Math.min(sc, c),
+          c1 = Math.max(sc, c);
+        const working = createEmptySelection(size);
+        for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) working[rr][cc] = true;
+        info.working = working;
+        info.last = [r, c];
+        setSelectionStack(stackFromMatrix(working));
+        applySelectionChange(working);
+      } else if (info.mode === "paint-add") {
+        const key = r * size + c;
+        if (!info.visited.has(key)) {
+          info.visited.add(key);
+          info.working[r][c] = true;
+          info.last = [r, c];
+          setSelectionStack((prev) => pushIfAbsent([...prev], [r, c]));
+          applySelectionChange(info.working.map((row) => row.slice()));
+        }
+      } else {
+        const key = r * size + c;
+        if (!info.visited.has(key)) {
+          info.visited.add(key);
+          if (info.working[r][c]) {
+            info.working[r][c] = false;
+            info.last = [r, c];
+            setSelectionStack((prev) => removeFromStack(prev, [r, c]));
+            applySelectionChange(info.working.map((row) => row.slice()));
+            if (current && sameCell(current, [r, c])) {
+              setSelectionStack((prev) => {
+                const updated = removeFromStack(prev, [r, c]);
+                applyCurrentChange(updated.length ? updated[updated.length - 1] : undefined);
+                return updated;
+              });
+            }
           }
         }
-      } else if (current) {
-        targets.push(current);
       }
-      if (targets.length === 0) return;
+    },
+    [size, applySelectionChange, getCellFromPointer, current, applyCurrentChange],
+  );
 
+  const finishDrag = useCallback(() => {
+    if (!dragRef.current) return;
+    const info = dragRef.current;
+    if (info.mode === "rect" || info.mode === "paint-add") applyCurrentChange(info.last ?? info.start);
+    dragRef.current = null;
+    draggingRef.current = false;
+  }, [applyCurrentChange]);
+
+  const onPointerUpGrid = useCallback(
+    (e: React.PointerEvent<HTMLTableSectionElement>) => {
+      finishDrag();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    },
+    [finishDrag],
+  );
+
+  const onPointerLeaveGrid = useCallback(() => {
+    if (!draggingRef.current) return;
+    finishDrag();
+  }, [finishDrag]);
+
+  // value / pencil operations
+  const applyValueToSelection = useCallback(
+    (value: number) => {
+      const targets = selectionTargets(selection, current);
+      if (targets.length === 0) return;
       setUserGrid((prev) => {
         const next = prev.map((row) => row.slice());
         for (const [r, c] of targets) {
-          if (isPreset(r, c)) continue; // don't overwrite presets
+          if (isPreset(r, c)) continue;
           next[r][c] = value > 0 ? value : 0;
         }
         return next;
       });
     },
-    [selection, size, current, isPreset],
+    [selection, current, isPreset],
   );
 
-  // Toggle a pencil digit (1..9) for selected cells (or current if none), skipping presets
-  const togglePencilDigit = useCallback(
-    (digit: number) => {
-      if (digit < 1 || digit > 9) return;
-      const targets: [number, number][] = [];
-      if (hasAnySelected(selection)) {
-        for (let r = 0; r < size; r++) {
-          for (let c = 0; c < size; c++) {
-            if (selection[r][c]) targets.push([r, c]);
-          }
-        }
-      } else if (current) {
-        targets.push(current);
-      }
-      if (targets.length === 0) return;
-
-      setPencils((prev) => {
+  const toggleDigitInCube = useCallback(
+    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>, digit: number) => {
+      if (digit < 1 || digit > size) return;
+      const targets = selectionTargets(selection, current);
+      if (!targets.length) return;
+      setCube((prev) => {
         const next = prev.map((row) => row.map((cell) => cell.slice()));
         for (const [r, c] of targets) {
-          if (isPreset(r, c)) continue; // cannot pencil on preset
+          if (isPreset(r, c)) continue;
           next[r][c][digit] = next[r][c][digit] ? 0 : 1;
         }
         return next;
       });
     },
-    [selection, size, current, isPreset],
+    [selection, current, isPreset, size],
   );
 
-  // Clear all pencil notes in selected/current cells, skipping presets
-  const clearPencils = useCallback(() => {
-    const targets: [number, number][] = [];
-    if (hasAnySelected(selection)) {
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (selection[r][c]) targets.push([r, c]);
+  const clearCubeDigits = useCallback(
+    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>) => {
+      const targets = selectionTargets(selection, current);
+      if (!targets.length) return;
+      setCube((prev) => {
+        const next = prev.map((row) => row.map((cell) => cell.slice()));
+        for (const [r, c] of targets) {
+          if (isPreset(r, c)) continue;
+          next[r][c].fill(0);
         }
-      }
-    } else if (current) {
-      targets.push(current);
-    }
-    if (targets.length === 0) return;
+        return next;
+      });
+    },
+    [selection, current, isPreset],
+  );
 
-    setPencils((prev) => {
-      const next = prev.map((row) => row.map((cell) => cell.slice()));
-      for (const [r, c] of targets) {
-        if (isPreset(r, c)) continue;
-        next[r][c].fill(0);
-      }
-      return next;
-    });
-  }, [selection, size, current, isPreset]);
-
-  // Move current cell by (dr, dc), clamp within bounds; set single selection and stack accordingly
+  // keyboard
   const moveCurrent = useCallback(
     (dr: number, dc: number) => {
-      let base: [number, number] | undefined = current;
+      let base: Cell | undefined = current;
       if (!base) {
-        if (hasAnySelected(selection)) {
-          outer: for (let r = 0; r < size; r++) {
-            for (let c = 0; c < size; c++) {
-              if (selection[r][c]) {
-                base = [r, c];
-                break outer;
-              }
-            }
-          }
-        } else {
-          base = [0, 0];
-        }
+        if (hasAnySelected(selection)) base = stackFromMatrix(selection)[0];
+        else base = [0, 0];
       }
       const n = neighbor({ row: base![0], col: base![1] }, dr, dc, size);
-      const next: [number, number] = [n.row, n.col];
+      const next: Cell = [n.row, n.col];
       applyCurrentChange(next);
-      const nextSel = buildSingleSelection(size, next[0], next[1]);
-      applySelectionChange(nextSel);
+      applySelectionChange(buildSingleSelection(size, next[0], next[1]));
       setSelectionStack([next]);
     },
     [current, selection, size, applyCurrentChange, applySelectionChange],
@@ -380,7 +393,15 @@ function SudokuGrid({
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key;
-      // Arrow navigation
+
+      if (key === "Escape") {
+        e.preventDefault();
+        applySelectionChange(createEmptySelection(size));
+        applyCurrentChange(undefined);
+        setSelectionStack([]);
+        return;
+      }
+
       if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
         e.preventDefault();
         if (key === "ArrowUp") moveCurrent(-1, 0);
@@ -389,41 +410,63 @@ function SudokuGrid({
         if (key === "ArrowRight") moveCurrent(0, 1);
         return;
       }
-      // Delete/Backspace or 0 clears
+
       if (key === "Backspace" || key === "Delete" || key === "0") {
         e.preventDefault();
-        if (pencilMode) {
-          clearPencils();
-        } else {
-          applyValueToSelection(0);
-        }
+        if (pencilMode === "center") clearCubeDigits(setPencils);
+        else if (pencilMode === "corner") clearCubeDigits(setCornerPencils);
+        else applyValueToSelection(0);
         return;
       }
-      // digits 1..9 (numpad included since e.key is the digit character)
+
+      // digits 1..9 only (kept to avoid layout issues for sizes > 9)
       if (/^[1-9]$/.test(key)) {
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
-          if (pencilMode) {
-            togglePencilDigit(val);
-          } else {
-            applyValueToSelection(val);
-          }
+          if (pencilMode === "center") toggleDigitInCube(setPencils, val);
+          else if (pencilMode === "corner") toggleDigitInCube(setCornerPencils, val);
+          else applyValueToSelection(val);
         }
       }
     },
-
-    [applyValueToSelection, size, pencilMode, togglePencilDigit, clearPencils, moveCurrent],
+    [
+      applySelectionChange,
+      size,
+      applyCurrentChange,
+      moveCurrent,
+      pencilMode,
+      clearCubeDigits,
+      applyValueToSelection,
+      toggleDigitInCube,
+    ],
   );
+
+  // Ensure the grid retains keyboard focus after toggling pencil/notes mode
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    // Only refocus if there's something selected or a current cell, to avoid stealing focus unnecessarily
+    if ((hasAnySelected(selection) || !!current) && document.activeElement !== wrapperRef.current) {
+      wrapperRef.current.focus();
+    }
+  }, [pencilMode, selection, current]);
 
   return (
     <div ref={wrapperRef} tabIndex={0} onKeyDown={onKeyDown} className="outline-none focus:outline-none">
       <table role="grid" aria-rowcount={size} aria-colcount={size}>
-        <tbody className={cn("border-2 border-foreground", className)} {...props}>
+        <tbody
+          ref={gridRef}
+          className={cn("border-2 border-foreground", className)}
+          onPointerDown={onPointerDownGrid}
+          onPointerMove={onPointerMoveGrid}
+          onPointerUp={onPointerUpGrid}
+          onPointerLeave={onPointerLeaveGrid}
+          {...props}
+        >
           {Array.from({ length: size }).map((_, r) => (
             <tr key={r} role="row">
               {Array.from({ length: size }).map((_, c) => {
-                const top =
+                const up =
                   r > 0 &&
                   isSelected(
                     neighbor({ row: r, col: c }, -1, 0, size).row,
@@ -435,7 +478,7 @@ function SudokuGrid({
                     neighbor({ row: r, col: c }, 0, 1, size).row,
                     neighbor({ row: r, col: c }, 0, 1, size).col,
                   );
-                const bottom =
+                const down =
                   r < size - 1 &&
                   isSelected(
                     neighbor({ row: r, col: c }, 1, 0, size).row,
@@ -448,19 +491,18 @@ function SudokuGrid({
                     neighbor({ row: r, col: c }, 0, -1, size).col,
                   );
 
-                const top_left = c > 0 && r > 0 && !isSelected(r - 1, c - 1) && top && left;
-                const top_right = c < size - 1 && r > 0 && !isSelected(r - 1, c + 1) && top && right;
-                const bottom_left = c > 0 && r < size - 1 && !isSelected(r + 1, c - 1) && bottom && left;
-                const bottom_right = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && bottom && right;
+                const topLeft = c > 0 && r > 0 && !isSelected(r - 1, c - 1) && up && left;
+                const topRight = c < size - 1 && r > 0 && !isSelected(r - 1, c + 1) && up && right;
+                const bottomLeft = c > 0 && r < size - 1 && !isSelected(r + 1, c - 1) && down && left;
+                const bottomRight = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && down && right;
 
-                // Build inline boxShadow for selected cells; use CSS var --sel for color set via Tailwind arbitrary property
-                const boxShadowParts: string[] = [];
                 const selected = isSelected(r, c);
+                const boxShadowParts: string[] = [];
                 if (selected) {
                   if (!left) boxShadowParts.push("inset 4px 0 0 0 var(--sel)");
                   if (!right) boxShadowParts.push("inset -4px 0 0 0 var(--sel)");
-                  if (!top) boxShadowParts.push("inset 0 4px 0 0 var(--sel)");
-                  if (!bottom) boxShadowParts.push("inset 0 -4px 0 0 var(--sel)");
+                  if (!up) boxShadowParts.push("inset 0 4px 0 0 var(--sel)");
+                  if (!down) boxShadowParts.push("inset 0 -4px 0 0 var(--sel)");
                 }
                 const boxShadow = boxShadowParts.join(", ");
 
@@ -468,50 +510,68 @@ function SudokuGrid({
                 const userVal = userGrid?.[r]?.[c] ?? 0;
                 const displayVal = presetVal > 0 ? presetVal : userVal > 0 ? userVal : "";
 
-                // Build pencil notes string when no main value is shown and cell is not preset
-                let pencilText = "";
-                if (!presetVal && !userVal) {
-                  const flags = pencils?.[r]?.[c];
-                  if (flags) {
-                    let s = "";
-                    for (let d = 1; d <= Math.min(9, size); d++) {
-                      if (flags[d]) s += String(d);
-                    }
-                    pencilText = s;
-                  }
-                }
+                const centerFlags = !presetVal && !userVal ? pencils?.[r]?.[c] : undefined;
+                const cornerFlags = !presetVal && !userVal ? cornerPencils?.[r]?.[c] : undefined;
+
+                const maxDigitShown = Math.min(9, size);
+                const centerCandidates: number[] = [];
+                const cornerCandidates: number[] = [];
+                if (centerFlags) for (let d = 1; d <= maxDigitShown; d++) if (centerFlags[d]) centerCandidates.push(d);
+                if (cornerFlags) for (let d = 1; d <= maxDigitShown; d++) if (cornerFlags[d]) cornerCandidates.push(d);
+
+                const order = centerCandidates.length > 0 ? CORNER_POS_ORDER_ALL.slice(0, 8) : CORNER_POS_ORDER_ALL;
 
                 return (
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                     <div
-                      onClick={handleClick(r, c)}
                       aria-selected={selected}
                       aria-readonly={isPreset(r, c) || undefined}
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
-                        "[--sel:theme(colors.blue.300)]",
-                        isCurrent(r, c) && "bg-blue-50",
+                        SEL_COLOR_VAR,
                         isPreset(r, c) ? "text-foreground" : "text-blue-700 font-semibold",
                       )}
                       style={boxShadow ? { boxShadow } : undefined}
                     >
-                      {selected && top_left && (
-                        <span className="absolute top-0 left-0 size-[4px] rounded-br-full bg-blue-300" />
+                      {selected && topLeft && (
+                        <span className="absolute top-0 left-0 size-[4px] rounded-br-xs bg-blue-300" />
                       )}
-                      {selected && top_right && (
-                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-full bg-blue-300" />
+                      {selected && topRight && (
+                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-xs bg-blue-300" />
                       )}
-                      {selected && bottom_left && (
-                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-full bg-blue-300" />
+                      {selected && bottomLeft && (
+                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-xs bg-blue-300" />
                       )}
-                      {selected && bottom_right && (
-                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-full bg-blue-300" />
+                      {selected && bottomRight && (
+                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-xs bg-blue-300" />
                       )}
-                      {/* Main value */}
+
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}
-                      {/* Pencil notes (only when no main value) */}
-                      {displayVal === "" && pencilText && (
-                        <span className="absolute text-xs leading-none font-semibold tracking-tight">{pencilText}</span>
+
+                      {displayVal === "" && cornerCandidates.length > 0 && (
+                        <>
+                          {cornerCandidates.slice(0, 9).map((digit, idx) => {
+                            const pos = order[idx];
+                            if (!pos) return null;
+                            return (
+                              <span
+                                key={`${digit}-${idx}`}
+                                className={cn(
+                                  CORNER_POS_CLASSES[pos],
+                                  "text-xs leading-none font-semibold tracking-tight",
+                                )}
+                              >
+                                {digit}
+                              </span>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {displayVal === "" && centerCandidates.length > 0 && (
+                        <span className="absolute text-xs leading-none font-semibold tracking-tight">
+                          {centerCandidates.join("")}
+                        </span>
                       )}
                     </div>
                   </td>
@@ -525,4 +585,4 @@ function SudokuGrid({
   );
 }
 
-export default SudokuGrid;
+export default React.memo(SudokuGrid);
