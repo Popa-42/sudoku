@@ -442,6 +442,15 @@ function SudokuGrid({
     ],
   );
 
+  // Ensure the grid retains keyboard focus after toggling pencil/notes mode
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    // Only refocus if there's something selected or a current cell, to avoid stealing focus unnecessarily
+    if ((hasAnySelected(selection) || !!current) && document.activeElement !== wrapperRef.current) {
+      wrapperRef.current.focus();
+    }
+  }, [pencilMode, selection, current]);
+
   return (
     <div ref={wrapperRef} tabIndex={0} onKeyDown={onKeyDown} className="outline-none focus:outline-none">
       <table role="grid" aria-rowcount={size} aria-colcount={size}>
