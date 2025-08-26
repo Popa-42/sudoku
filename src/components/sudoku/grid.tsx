@@ -18,7 +18,7 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   presetGrid?: number[][];
   editedGrid?: number[][];
   pencilGrid?: number[][][];
-  pencilMode?: boolean;
+  pencilMode?: "center" | "corner" | null;
   currentCell?: [number, number];
   selectedCells?: boolean[][];
   onCellSelect?: (info: CellSelectInfo) => void;
@@ -95,9 +95,9 @@ function SudokuGrid({
   size = 9,
   className,
   presetGrid,
-  editedGrid, // kept for API compatibility
-  pencilGrid, // kept for API compatibility
-  pencilMode = false,
+  editedGrid,
+  pencilGrid,
+  pencilMode = null,
   currentCell,
   selectedCells,
   onCellSelect,
@@ -135,8 +135,12 @@ function SudokuGrid({
   const [userGrid, setUserGrid] = useState<number[][]>(() =>
     Array.from({ length: size }, () => Array<number>(size).fill(0)),
   );
-  // Maintain pencil notes per cell as flags for digits 1..9 (index 1..9 used)
+  // Maintain center pencil notes per cell as flags for digits 1..9 (index 1..9 used)
   const [pencils, setPencils] = useState<number[][][]>(() =>
+    Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))),
+  );
+  // Maintain corner pencil notes per cell independently from center notes
+  const [cornerPencils, setCornerPencils] = useState<number[][][]>(() =>
     Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))),
   );
 
@@ -146,6 +150,7 @@ function SudokuGrid({
     setSelectionStack([]);
     setUserGrid(Array.from({ length: size }, () => Array<number>(size).fill(0)));
     setPencils(Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))));
+    setCornerPencils(Array.from({ length: size }, () => Array.from({ length: size }, () => Array<number>(10).fill(0))));
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
@@ -447,7 +452,7 @@ function SudokuGrid({
     [selection, size, current, isPreset],
   );
 
-  // Toggle a pencil digit (1..9) for selected cells (or current if none), skipping presets
+  // Toggle a center pencil digit (1..9) for selected cells (or current if none), skipping presets
   const togglePencilDigit = useCallback(
     (digit: number) => {
       if (digit < 1 || digit > 9) return;
@@ -475,7 +480,35 @@ function SudokuGrid({
     [selection, size, current, isPreset],
   );
 
-  // Clear all pencil notes in selected/current cells, skipping presets
+  // Toggle a corner pencil digit (1..9) for selected cells (or current if none), skipping presets
+  const toggleCornerDigit = useCallback(
+    (digit: number) => {
+      if (digit < 1 || digit > 9) return;
+      const targets: [number, number][] = [];
+      if (hasAnySelected(selection)) {
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if (selection[r][c]) targets.push([r, c]);
+          }
+        }
+      } else if (current) {
+        targets.push(current);
+      }
+      if (targets.length === 0) return;
+
+      setCornerPencils((prev) => {
+        const next = prev.map((row) => row.map((cell) => cell.slice()));
+        for (const [r, c] of targets) {
+          if (isPreset(r, c)) continue; // cannot pencil on preset
+          next[r][c][digit] = next[r][c][digit] ? 0 : 1;
+        }
+        return next;
+      });
+    },
+    [selection, size, current, isPreset],
+  );
+
+  // Clear all center pencil notes in selected/current cells, skipping presets
   const clearPencils = useCallback(() => {
     const targets: [number, number][] = [];
     if (hasAnySelected(selection)) {
@@ -490,6 +523,30 @@ function SudokuGrid({
     if (targets.length === 0) return;
 
     setPencils((prev) => {
+      const next = prev.map((row) => row.map((cell) => cell.slice()));
+      for (const [r, c] of targets) {
+        if (isPreset(r, c)) continue;
+        next[r][c].fill(0);
+      }
+      return next;
+    });
+  }, [selection, size, current, isPreset]);
+
+  // Clear all corner pencil notes in selected/current cells, skipping presets
+  const clearCornerPencils = useCallback(() => {
+    const targets: [number, number][] = [];
+    if (hasAnySelected(selection)) {
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (selection[r][c]) targets.push([r, c]);
+        }
+      }
+    } else if (current) {
+      targets.push(current);
+    }
+    if (targets.length === 0) return;
+
+    setCornerPencils((prev) => {
       const next = prev.map((row) => row.map((cell) => cell.slice()));
       for (const [r, c] of targets) {
         if (isPreset(r, c)) continue;
@@ -530,6 +587,16 @@ function SudokuGrid({
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key;
+
+      // Clear selection with Escape
+      if (key === "Escape") {
+        e.preventDefault();
+        applySelectionChange(createEmptySelection(size));
+        applyCurrentChange(undefined);
+        setSelectionStack([]);
+        return;
+      }
+
       // Arrow navigation
       if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
         e.preventDefault();
@@ -542,8 +609,10 @@ function SudokuGrid({
       // Delete/Backspace or 0 clears
       if (key === "Backspace" || key === "Delete" || key === "0") {
         e.preventDefault();
-        if (pencilMode) {
+        if (pencilMode === "center") {
           clearPencils();
+        } else if (pencilMode === "corner") {
+          clearCornerPencils();
         } else {
           applyValueToSelection(0);
         }
@@ -554,16 +623,28 @@ function SudokuGrid({
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
-          if (pencilMode) {
+          if (pencilMode === "center") {
             togglePencilDigit(val);
+          } else if (pencilMode === "corner") {
+            toggleCornerDigit(val);
           } else {
             applyValueToSelection(val);
           }
         }
       }
     },
-
-    [applyValueToSelection, size, pencilMode, togglePencilDigit, clearPencils, moveCurrent],
+    [
+      applyValueToSelection,
+      size,
+      pencilMode,
+      togglePencilDigit,
+      toggleCornerDigit,
+      clearPencils,
+      clearCornerPencils,
+      moveCurrent,
+      applyCurrentChange,
+      applySelectionChange,
+    ],
   );
 
   return (
@@ -626,17 +707,16 @@ function SudokuGrid({
                 const userVal = userGrid?.[r]?.[c] ?? 0;
                 const displayVal = presetVal > 0 ? presetVal : userVal > 0 ? userVal : "";
 
-                // Build pencil notes string when no main value is shown and cell is not preset
-                let pencilText = "";
-                if (!presetVal && !userVal) {
-                  const flags = pencils?.[r]?.[c];
-                  if (flags) {
-                    let s = "";
-                    for (let d = 1; d <= Math.min(9, size); d++) {
-                      if (flags[d]) s += String(d);
-                    }
-                    pencilText = s;
-                  }
+                // Build center and corner pencil candidates when no main value is shown and cell is not preset
+                const centerFlags = !presetVal && !userVal ? pencils?.[r]?.[c] : undefined;
+                const cornerFlags = !presetVal && !userVal ? cornerPencils?.[r]?.[c] : undefined;
+                const centerCandidates: number[] = [];
+                const cornerCandidates: number[] = [];
+                if (centerFlags) {
+                  for (let d = 1; d <= Math.min(9, size); d++) if (centerFlags[d]) centerCandidates.push(d);
+                }
+                if (cornerFlags) {
+                  for (let d = 1; d <= Math.min(9, size); d++) if (cornerFlags[d]) cornerCandidates.push(d);
                 }
 
                 return (
@@ -666,9 +746,41 @@ function SudokuGrid({
                       )}
                       {/* Main value */}
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}
-                      {/* Pencil notes (only when no main value) */}
-                      {displayVal === "" && pencilText && (
-                        <span className="absolute text-xs leading-none font-semibold tracking-tight">{pencilText}</span>
+                      {/* Corner notes: absolute around edges; omit center position if center notes present to avoid overlap */}
+                      {displayVal === "" && cornerCandidates.length > 0 && (
+                        <>
+                          {cornerCandidates.slice(0, 9).map((digit, idx) => {
+                            const baseOrder = ["tl", "tr", "bl", "br", "tc", "rc", "bc", "lc", "cc"] as const;
+                            const order = centerCandidates.length > 0 ? baseOrder.slice(0, 8) : baseOrder;
+                            const pos = order[idx];
+                            if (!pos) return null;
+                            const posCls: Record<(typeof baseOrder)[number], string> = {
+                              tl: "absolute top-0 left-0 translate-x-0.5 translate-y-0.5",
+                              tr: "absolute top-0 right-0 -translate-x-0.5 translate-y-0.5",
+                              bl: "absolute bottom-0 left-0 translate-x-0.5 -translate-y-0.5",
+                              br: "absolute bottom-0 right-0 -translate-x-0.5 -translate-y-0.5",
+                              tc: "absolute top-0 left-1/2 -translate-x-1/2 translate-y-0.5",
+                              rc: "absolute right-0 top-1/2 -translate-y-1/2 -translate-x-0.5",
+                              bc: "absolute bottom-0 left-1/2 -translate-x-1/2 -translate-y-0.5",
+                              lc: "absolute left-0 top-1/2 -translate-y-1/2 translate-x-0.5",
+                              cc: "absolute inset-0 flex items-center justify-center",
+                            };
+                            return (
+                              <span
+                                key={`${digit}-${idx}`}
+                                className={cn(posCls[pos], "text-[10px] leading-none font-semibold tracking-tight")}
+                              >
+                                {digit}
+                              </span>
+                            );
+                          })}
+                        </>
+                      )}
+                      {/* Center notes: compact string in center */}
+                      {displayVal === "" && centerCandidates.length > 0 && (
+                        <span className="absolute text-xs leading-none font-semibold tracking-tight">
+                          {centerCandidates.join("")}
+                        </span>
                       )}
                     </div>
                   </td>
