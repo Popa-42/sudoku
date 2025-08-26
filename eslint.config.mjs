@@ -47,32 +47,6 @@ const eslintConfig = [
           project: "./tsconfig.json",
         },
       },
-      "better-tailwindcss": {
-        attributes: ["className", "classNames", "classes", "styles", "style", ".*Classes", ".*Variants"],
-        callees: ["clsx", "cn", "cva", "tw", ".*Classes", ".*Variants"],
-        variables: [
-          ".*Classes",
-          ".*Variants",
-          [
-            ".*Classes",
-            [
-              {
-                match: "objectValues",
-                pathPattern: "[a-z]+[A-Za-z]*",
-              },
-            ],
-          ],
-          [
-            ".*Variants",
-            [
-              {
-                match: "objectValues",
-                pathPattern: "[a-z]+[A-Za-z]*",
-              },
-            ],
-          ],
-        ],
-      },
     },
   }),
   {
@@ -85,7 +59,7 @@ const eslintConfig = [
     },
   },
   {
-    files: ["**/*.{js,mjs,jsx,ts,mts,tsx}"],
+    files: ["**/*.{jsx,tsx}"],
     languageOptions: {
       parserOptions: {
         ecmaFeatures: {
@@ -109,19 +83,16 @@ const eslintConfig = [
           group: "newLine",
         },
       ],
-      "better-tailwindcss/no-unregistered-classes": [
-        "warn",
-        {
-          ignore: ["dark"],
-        },
-      ],
+      "better-tailwindcss/enforce-consistent-class-order": "warn",
+      "better-tailwindcss/enforce-consistent-variable-syntax": "warn",
+      "better-tailwindcss/no-unregistered-classes": ["off"],
 
       // Prettier
       ...eslintPluginPrettierRecommended.rules,
       "prettier/prettier": [
         "error",
         {
-          endOfLine: "crlf",
+          endOfLine: "lf",
         },
       ],
     },
@@ -129,6 +100,30 @@ const eslintConfig = [
       "better-tailwindcss": {
         // tailwindcss 4: the path to the entry file of the css based tailwind config (eg: `src/global.css`)
         entryPoint: "public/assets/styles/globals.css",
+
+        attributes: ["class", "className", ".*Class(Name|es)?$", ".*Variants?$"],
+        callees: [
+          "cva",
+          "cx",
+          "cn",
+          "clsx",
+          "tw",
+          "tv",
+          ".*Variants?$",
+          [
+            "cva",
+            [
+              {
+                match: "strings",
+              },
+              {
+                match: "objectValues",
+                pathPattern: "^variants(\\.[a-z]+[a-zA-Z]*)+$",
+              },
+            ],
+          ],
+        ],
+        variables: [".*Variants?$", ".*Classes?$"],
       },
     },
   },
