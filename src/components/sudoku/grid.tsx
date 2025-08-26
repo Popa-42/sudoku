@@ -529,22 +529,21 @@ function SudokuGrid({
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
-                        isCurrent(r, c) && "bg-blue-50",
                         isPreset(r, c) ? "text-foreground" : "text-blue-700 font-semibold",
                       )}
                       style={boxShadow ? { boxShadow } : undefined}
                     >
                       {selected && topLeft && (
-                        <span className="absolute top-0 left-0 size-[4px] rounded-br-full bg-blue-300" />
+                        <span className="absolute top-0 left-0 size-[4px] rounded-br-xs bg-blue-300" />
                       )}
                       {selected && topRight && (
-                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-full bg-blue-300" />
+                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-xs bg-blue-300" />
                       )}
                       {selected && bottomLeft && (
-                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-full bg-blue-300" />
+                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-xs bg-blue-300" />
                       )}
                       {selected && bottomRight && (
-                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-full bg-blue-300" />
+                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-xs bg-blue-300" />
                       )}
 
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}
