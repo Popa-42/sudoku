@@ -1,9 +1,12 @@
 "use client";
 
-import SudokuGrid from "@/components/sudoku/grid";
-import React, { useState } from "react";
+import { SudokuGrid } from "@/components/sudoku/grid";
+import React, { useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Pencil } from "lucide-react";
+import { Binary, Pencil, Eraser } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { ColorName, SudokuGridHandle } from "@/types";
+import { COLOR_BG_CLASS } from "@/components/sudoku/constants";
 
 export default function Home() {
   // const regions9: number[][] = [
@@ -34,9 +37,26 @@ export default function Home() {
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
   const [notesMode, setNotesMode] = useState<"center" | "corner" | null>(null);
 
+  // Ref to call imperative actions on the grid (e.g., annotateColor)
+  const gridRef = useRef<SudokuGridHandle | null>(null);
+
+  // Pastel color buttons (ordered as requested) - without black
+  const COLOR_ORDER: ColorName[] = [
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "cyan",
+    "blue",
+    "violet",
+    "pink",
+    "transparent",
+  ];
+
   return (
     <div className="space-y-4 p-8">
       <SudokuGrid
+        ref={gridRef}
         presetGrid={sudokuGrid}
         // size={15}
         // regions={regions9}
@@ -67,6 +87,29 @@ export default function Home() {
         >
           <Binary />
         </Toggle>
+      </div>
+      {/* Color annotation buttons (stateless actions) */}
+      <div className="grid w-fit grid-cols-3 gap-1 rounded-md border p-2">
+        {COLOR_ORDER.map((name) => (
+          <Button
+            key={name}
+            variant="outline"
+            aria-label={`Apply ${name} color to selection`}
+            onClick={() => gridRef.current?.annotateColor(name)}
+            title={`Toggle ${name} stripe`}
+          >
+            <span aria-hidden className={`size-5 rounded-xs border border-black/10 ${COLOR_BG_CLASS[name]}`} />
+          </Button>
+        ))}
+        {/* Clear color button */}
+        <Button
+          variant="outline"
+          aria-label="Clear color from selection"
+          onClick={() => gridRef.current?.annotateClear()}
+          title="Clear all stripes"
+        >
+          <Eraser />
+        </Button>
       </div>
     </div>
   );

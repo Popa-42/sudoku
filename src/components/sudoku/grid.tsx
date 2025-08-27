@@ -1,7 +1,7 @@
 // src/components/sudoku/grid.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
-import { CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
+import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
 import {
   buildSingleSelection,
   computeDefaultBox,
@@ -15,7 +15,7 @@ import {
   stackFromMatrix,
   validateRegions,
 } from "@/components/sudoku/utils/selection";
-import { Cell, CellSelectInfo, RectBox } from "@/types";
+import { Cell, CellSelectInfo, ColorName, RectBox, SudokuGridHandle } from "@/types";
 import { createDigitCube, createNumberGrid, selectionTargets } from "@/components/sudoku/utils/grids";
 
 type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -36,24 +36,27 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 /* ---------- Component ---------- */
-function SudokuGrid({
-  size = 9,
-  className,
-  presetGrid,
-  editedGrid, // kept for API compatibility
-  pencilGrid, // kept for API compatibility
-  pencilMode = null,
-  currentCell,
-  selectedCells,
-  onCellSelect,
-  onSelectionChange,
-  onCurrentCellChange,
-  box,
-  regions,
-  cellClassName,
-  dividerClassName = "border-foreground",
-  ...props
-}: SudokuGridProps) {
+const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(function SudokuGrid(
+  {
+    size = 9,
+    className,
+    presetGrid,
+    editedGrid, // kept for API compatibility
+    pencilGrid, // kept for API compatibility
+    pencilMode = null,
+    currentCell,
+    selectedCells,
+    onCellSelect,
+    onSelectionChange,
+    onCurrentCellChange,
+    box,
+    regions,
+    cellClassName,
+    dividerClassName = "border-foreground",
+    ...props
+  },
+  ref,
+) {
   if (!Number.isInteger(size) || size <= 0) throw new Error("Size must be a positive integer.");
   validateRegions(regions, size);
 
@@ -79,6 +82,10 @@ function SudokuGrid({
   const [userGrid, setUserGrid] = useState<number[][]>(() => createNumberGrid(size));
   const [pencils, setPencils] = useState<number[][][]>(() => createDigitCube(size));
   const [cornerPencils, setCornerPencils] = useState<number[][][]>(() => createDigitCube(size));
+  // color annotations grid: array of color stripes per cell
+  const [colorGrid, setColorGrid] = useState<ColorName[][][]>(() =>
+    Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])),
+  );
 
   useEffect(() => {
     setInternalSelection(emptySelection);
@@ -87,6 +94,7 @@ function SudokuGrid({
     setUserGrid(createNumberGrid(size));
     setPencils(createDigitCube(size));
     setCornerPencils(createDigitCube(size));
+    setColorGrid(Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])));
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
@@ -117,7 +125,6 @@ function SudokuGrid({
   }, [selection, currentCell, onCurrentCellChange]);
 
   const isSelected = useCallback((r: number, c: number) => !!selection?.[r]?.[c], [selection]);
-  const isCurrent = useCallback((r: number, c: number) => !!current && current[0] === r && current[1] === c, [current]);
 
   const cellBorderClasses = useCallback(
     (r: number, c: number) => {
@@ -167,6 +174,39 @@ function SudokuGrid({
       onCurrentCellChange?.(nextCurrent);
     },
     [currentCell, onCurrentCellChange],
+  );
+
+  // Expose imperative color annotation API (toggle colors per cell; supports transparent)
+  useImperativeHandle(
+    ref,
+    (): SudokuGridHandle => ({
+      annotateColor: (color: ColorName) => {
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setColorGrid((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          for (const [r, c] of targets) {
+            const list = next[r][c];
+            const idx = list.indexOf(color);
+            if (idx >= 0) list.splice(idx, 1);
+            else list.push(color);
+          }
+          return next;
+        });
+      },
+      annotateClear: () => {
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setColorGrid((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
+          for (const [r, c] of targets) {
+            next[r][c] = [];
+          }
+          return next;
+        });
+      },
+    }),
+    [selection, current],
   );
 
   // pointer → cell mapping
@@ -497,14 +537,7 @@ function SudokuGrid({
                 const bottomRight = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && down && right;
 
                 const selected = isSelected(r, c);
-                const boxShadowParts: string[] = [];
-                if (selected) {
-                  if (!left) boxShadowParts.push("inset 4px 0 0 0 var(--sel)");
-                  if (!right) boxShadowParts.push("inset -4px 0 0 0 var(--sel)");
-                  if (!up) boxShadowParts.push("inset 0 4px 0 0 var(--sel)");
-                  if (!down) boxShadowParts.push("inset 0 -4px 0 0 var(--sel)");
-                }
-                const boxShadow = boxShadowParts.join(", ");
+                // selection highlight is drawn with absolute edge spans (above color stripes)
 
                 const presetVal = presetGrid?.[r]?.[c] ?? 0;
                 const userVal = userGrid?.[r]?.[c] ?? 0;
@@ -521,6 +554,9 @@ function SudokuGrid({
 
                 const order = centerCandidates.length > 0 ? CORNER_POS_ORDER_ALL.slice(0, 8) : CORNER_POS_ORDER_ALL;
 
+                const cellColors = colorGrid?.[r]?.[c] ?? [];
+                const forceWhiteText = cellColors.includes("black");
+
                 return (
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                     <div
@@ -530,9 +566,45 @@ function SudokuGrid({
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
                         isPreset(r, c) ? "text-foreground" : "text-blue-700 font-semibold",
+                        forceWhiteText && "text-white",
                       )}
-                      style={boxShadow ? { boxShadow } : undefined}
                     >
+                      {/* Color stripes background */}
+                      {cellColors.length > 0 && (
+                        // eslint-disable-next-line better-tailwindcss/enforce-consistent-class-order
+                        <div className="absolute inset-0 overflow-hidden flex pointer-events-none">
+                          {cellColors.map((clr, i) => (
+                            <div key={i} className={cn("h-full flex-1", COLOR_BG_CLASS[clr])} />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Selection edges (above stripes) */}
+                      {selected && !left && (
+                        <span
+                          className="pointer-events-none absolute top-0 bottom-0 left-0 w-[4px]"
+                          style={{ background: "var(--sel)" }}
+                        />
+                      )}
+                      {selected && !right && (
+                        <span
+                          className="pointer-events-none absolute top-0 right-0 bottom-0 w-[4px]"
+                          style={{ background: "var(--sel)" }}
+                        />
+                      )}
+                      {selected && !up && (
+                        <span
+                          className="pointer-events-none absolute top-0 right-0 left-0 h-[4px]"
+                          style={{ background: "var(--sel)" }}
+                        />
+                      )}
+                      {selected && !down && (
+                        <span
+                          className="pointer-events-none absolute right-0 bottom-0 left-0 h-[4px]"
+                          style={{ background: "var(--sel)" }}
+                        />
+                      )}
+
                       {selected && topLeft && (
                         <span className="absolute top-0 left-0 size-[4px] rounded-br-xs bg-blue-300" />
                       )}
@@ -583,6 +655,6 @@ function SudokuGrid({
       </table>
     </div>
   );
-}
+});
 
-export default React.memo(SudokuGrid);
+export const SudokuGrid = React.memo(SudokuGridImpl);
