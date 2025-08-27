@@ -7,7 +7,7 @@
     "format": "npx eslint --fix .",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "npx eslint ."
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
