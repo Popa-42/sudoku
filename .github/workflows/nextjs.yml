@@ -42,7 +42,7 @@ jobs:
           clean-exclude: "pr-preview/"
           force: "false"
   preview:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == "pull_request"
     runs-on: ubuntu-latest
     concurrency: preview-${{ github.ref }}
     steps:
@@ -52,10 +52,10 @@ jobs:
           node-version: "22"
           cache: "npm"
       - name: Install
-        if: ${{ github.event.action != 'closed' }}
+        if: ${{ github.event.action != "closed" }}
         run: npm ci
       - name: Build (PR)
-        if: ${{ github.event.action != 'closed' }}
+        if: ${{ github.event.action != "closed" }}
         env:
           NEXT_BASE_PATH: "/pr-preview/pr-${{ github.event.number }}"
         run: npm run build
