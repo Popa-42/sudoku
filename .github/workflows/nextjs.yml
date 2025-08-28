@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   prod:
-    if: github.event_name == 'push'
+    if: github.event_name == "push"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,14 +30,17 @@ jobs:
         env:
           NEXT_BASE_PATH: ""
         run: npm run build
+      - name: Add .nojekyll (required for _next/)
+        run: |
+          mkdir -p out
+          touch out/.nojekyll
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages
-          folder: out
+          branch: "gh-pages"
+          folder: "out"
           clean-exclude: "pr-preview/"
           force: "false"
-          # CNAME wird aus ./out/CNAME übernommen, falls vorhanden
   preview:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
