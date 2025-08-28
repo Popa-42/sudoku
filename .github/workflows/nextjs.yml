@@ -16,25 +16,30 @@ concurrency:
 
 jobs:
   prod:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name == 'push'
       - uses: actions/setup-node@v4
+        if: github.event_name == 'push'
         with:
           node-version: "22"
           cache: "npm"
       - name: Install
+        if: github.event_name == 'push'
         run: npm ci
       - name: Build (root)
+        if: github.event_name == 'push'
         env:
           NEXT_BASE_PATH: ""
         run: npm run build
       - name: Add .nojekyll (required for _next/)
+        if: github.event_name == 'push'
         run: |
           mkdir -p out
           touch out/.nojekyll
       - name: Deploy to gh-pages
+        if: github.event_name == 'push'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: "gh-pages"
@@ -42,24 +47,26 @@ jobs:
           clean-exclude: "pr-preview/"
           force: "false"
   preview:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     concurrency: preview-${{ github.ref }}
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
       - uses: actions/setup-node@v4
+        if: github.event_name == 'pull_request'
         with:
           node-version: "22"
           cache: "npm"
       - name: Install
-        if: ${{ github.event.action != 'closed' }}
+        if: github.event.action != 'closed' && github.event_name == 'pull_request'
         run: npm ci
       - name: Build (PR)
-        if: ${{ github.event.action != 'closed' }}
+        if: github.event.action != 'closed' && github.event_name == 'pull_request'
         env:
           NEXT_BASE_PATH: "/pr-preview/pr-${{ github.event.number }}"
         run: npm run build
       - name: Deploy PR preview
+        if: github.event_name == 'pull_request'
         uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: "out"
