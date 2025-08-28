@@ -52,10 +52,10 @@ jobs:
           node-version: "22"
           cache: "npm"
       - name: Install
-        if: ${{ github.event.action != "closed" }}
+        if: ${{ github.event.action != 'closed' }}
         run: npm ci
       - name: Build (PR)
-        if: ${{ github.event.action != "closed" }}
+        if: ${{ github.event.action != 'closed' }}
         env:
           NEXT_BASE_PATH: "/pr-preview/pr-${{ github.event.number }}"
         run: npm run build
