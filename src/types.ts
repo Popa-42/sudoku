@@ -12,17 +12,7 @@ type CellSelectInfo = {
 };
 
 // Pastel color names used for annotations
-export type ColorName =
-  | "red"
-  | "orange"
-  | "yellow"
-  | "green"
-  | "blue"
-  | "cyan"
-  | "violet"
-  | "pink"
-  | "black"
-  | "transparent";
+export type ColorName = "red" | "orange" | "yellow" | "green" | "blue" | "cyan" | "violet" | "pink" | "transparent";
 
 // Imperative API exposed by the SudokuGrid component
 

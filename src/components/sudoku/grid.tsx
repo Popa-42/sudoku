@@ -51,7 +51,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     box,
     regions,
     cellClassName,
-    dividerClassName = "border-foreground",
+    dividerClassName = "border-foreground dark:border-muted",
     ...props
   },
   ref,
@@ -127,7 +127,15 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
   const cellBorderClasses = useCallback(
     (r: number, c: number) => {
-      const base: string[] = ["size-10", "border", "border-foreground", "text-center", "select-none", "cursor-pointer"];
+      const base: string[] = [
+        "size-10",
+        "border",
+        "border-foreground",
+        "dark:border-muted",
+        "text-center",
+        "select-none",
+        "cursor-pointer",
+      ];
       if (cellClassName) base.push(cellClassName);
 
       const thick: string[] = [];
@@ -270,7 +278,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     [selection, current, isPreset, size],
   );
 
-  // pointer → cell mapping
+  // pointer -> cell mapping
   const clampIndex = useCallback((v: number, max: number) => Math.max(0, Math.min(max - 1, v)), []);
   const getCellFromPointer = useCallback(
     (e: React.PointerEvent | PointerEvent): Cell | undefined => {
@@ -557,7 +565,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       <table role="grid" aria-rowcount={size} aria-colcount={size}>
         <tbody
           ref={gridRef}
-          className={cn("border-2 border-foreground", className)}
+          className={className}
           onPointerDown={onPointerDownGrid}
           onPointerMove={onPointerMoveGrid}
           onPointerUp={onPointerUpGrid}
@@ -616,7 +624,6 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                 const order = centerCandidates.length > 0 ? CORNER_POS_ORDER_ALL.slice(0, 8) : CORNER_POS_ORDER_ALL;
 
                 const cellColors = colorGrid?.[r]?.[c] ?? [];
-                const forceWhiteText = cellColors.includes("black");
 
                 return (
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
@@ -626,8 +633,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
-                        isPreset(r, c) ? "text-foreground" : "text-blue-700 font-semibold",
-                        forceWhiteText && "text-white",
+                        isPreset(r, c) ? "text-foreground" : "text-blue-700 dark:text-blue-500 font-bold font-serif",
                       )}
                     >
                       {/* Color stripes background */}
@@ -667,16 +673,16 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                       )}
 
                       {selected && topLeft && (
-                        <span className="absolute top-0 left-0 size-[4px] rounded-br-xs bg-blue-300" />
+                        <span className="absolute top-0 left-0 size-[4px] rounded-br-xs bg-(--sel)" />
                       )}
                       {selected && topRight && (
-                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-xs bg-blue-300" />
+                        <span className="absolute top-0 right-0 size-[4px] rounded-bl-xs bg-(--sel)" />
                       )}
                       {selected && bottomLeft && (
-                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-xs bg-blue-300" />
+                        <span className="absolute bottom-0 left-0 size-[4px] rounded-tr-xs bg-(--sel)" />
                       )}
                       {selected && bottomRight && (
-                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-xs bg-blue-300" />
+                        <span className="absolute right-0 bottom-0 size-[4px] rounded-tl-xs bg-(--sel)" />
                       )}
 
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}
@@ -691,7 +697,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                                 key={`${digit}-${idx}`}
                                 className={cn(
                                   CORNER_POS_CLASSES[pos],
-                                  "text-xs leading-none font-semibold tracking-tight",
+                                  "text-xxs leading-none font-semibold tracking-tight",
                                 )}
                               >
                                 {digit}

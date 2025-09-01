@@ -2,25 +2,19 @@ import React from "react";
 import type { Metadata } from "next";
 import "../../public/assets/styles/globals.css";
 
-import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
+import { Geist, Playpen_Sans } from "next/font/google";
 import { clsx } from "clsx";
 
-const ibmPlexSans = IBM_Plex_Sans({
-  weight: ["100", "200", "300", "400", "500", "600", "700"],
+const geist = Geist({
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
   subsets: ["latin"],
-  variable: "--font-ibm-plex-sans",
+  variable: "--font-sans",
 });
 
-const ibmPlexSerif = IBM_Plex_Serif({
-  weight: ["100", "200", "300", "400", "500", "600", "700"],
+const playpenSans = Playpen_Sans({
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800"],
   subsets: ["latin"],
-  variable: "--font-ibm-plex-serif",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  weight: ["100", "200", "300", "400", "500", "600", "700"],
-  subsets: ["latin"],
-  variable: "--font-ibm-plex-mono",
+  variable: "--font-serif",
 });
 
 export const metadata: Metadata = {
@@ -42,11 +36,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className="antialiased">
-        <main className={clsx(ibmPlexSans.variable, ibmPlexSerif.variable, ibmPlexMono.variable, "font-sans")}>
-          {children}
-        </main>
+        <main className={clsx(geist.variable, playpenSans.variable, "font-sans")}>{children}</main>
       </body>
     </html>
   );

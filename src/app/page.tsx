@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
 import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
 // Maps digits 1-9 to their keypad-like corner positions
 const digitToCornerMap = {
@@ -121,98 +122,110 @@ export default function Home() {
         }}
       />
 
-      {/* Mode toggles */}
-      <div className="flex w-fit gap-1 rounded-md border p-2">
-        <Toggle
-          variant="outline"
-          aria-label="Toggle Center Notes Mode"
-          pressed={notesMode === "center"}
-          onPressedChange={(value) => setNotesMode(value ? "center" : null)}
-        >
-          <Pencil />
-        </Toggle>
-        <Toggle
-          variant="outline"
-          aria-label="Toggle Corner Notes Mode"
-          pressed={notesMode === "corner"}
-          onPressedChange={(value) => setNotesMode(value ? "corner" : null)}
-        >
-          <Binary />
-        </Toggle>
-        <Toggle
-          variant="outline"
-          aria-label="Toggle Color Annotation Mode"
-          pressed={notesMode === "color"}
-          onPressedChange={(value) => setNotesMode(value ? "color" : null)}
-        >
-          <Paintbrush />
-        </Toggle>
-      </div>
+      <div className="flex w-fit flex-col gap-2 rounded-md border p-2">
+        {/* Mode toggles */}
+        <div className="flex gap-1">
+          <Toggle
+            variant="outline"
+            aria-label="Toggle Center Notes Mode"
+            pressed={notesMode === "center"}
+            onPressedChange={(value) => setNotesMode(value ? "center" : null)}
+          >
+            <Pencil />
+          </Toggle>
+          <Toggle
+            variant="outline"
+            aria-label="Toggle Corner Notes Mode"
+            pressed={notesMode === "corner"}
+            onPressedChange={(value) => setNotesMode(value ? "corner" : null)}
+          >
+            <Binary />
+          </Toggle>
+          <Toggle
+            variant="outline"
+            aria-label="Toggle Color Annotation Mode"
+            pressed={notesMode === "color"}
+            onPressedChange={(value) => setNotesMode(value ? "color" : null)}
+          >
+            <Paintbrush />
+          </Toggle>
+        </div>
 
-      {/* Adaptive 10-button palette */}
-      <div className="grid w-fit grid-cols-3 gap-1 rounded-md border p-2">
-        {Array.from({ length: 10 }).map((_, idx) => {
-          const isClearButtonInColor = isColorMode && idx === 9; // 10th button clears colors
-          const aria = isColorMode
-            ? isClearButtonInColor
-              ? "Clear color from selection"
-              : `Apply ${COLOR_ORDER[idx]} color to selection`
-            : isCenterMode
-              ? `Toggle center note ${DIGITS[idx]}`
-              : isCornerMode
-                ? `Toggle corner note ${DIGITS[idx]}`
-                : `Set digit ${DIGITS[idx]}`;
+        <Separator />
 
-          const title = isColorMode
-            ? isClearButtonInColor
-              ? "Clear all stripes"
-              : `Toggle ${COLOR_ORDER[idx]} stripe`
-            : isCenterMode || isCornerMode
-              ? DIGITS[idx] === 0
-                ? "Clear notes"
-                : `${isCenterMode ? "Center" : "Corner"} note ${DIGITS[idx]}`
-              : DIGITS[idx] === 0
-                ? "Clear value"
-                : `Place ${DIGITS[idx]}`;
+        {/* Adaptive 10-button palette */}
+        <div className="grid w-fit grid-cols-3 gap-1">
+          {Array.from({ length: 10 }).map((_, idx) => {
+            const isClearButtonInColor = isColorMode && idx === 9;
+            const aria = isColorMode
+              ? isClearButtonInColor
+                ? "Clear color from selection"
+                : `Apply ${COLOR_ORDER[idx]} color to selection`
+              : isCenterMode
+                ? `Toggle center note ${DIGITS[idx]}`
+                : isCornerMode
+                  ? `Toggle corner note ${DIGITS[idx]}`
+                  : `Set digit ${DIGITS[idx]}`;
 
-          const content = (() => {
-            if (DIGITS[idx] === 0) return <Eraser />;
-            if (isColorMode) {
-              const color = COLOR_ORDER[idx]!;
-              return (
-                <span aria-hidden className={`size-4 rounded-xs border border-black/10 ${COLOR_BG_CLASS[color]}`} />
-              );
-            }
+            const title = isColorMode
+              ? isClearButtonInColor
+                ? "Clear all stripes"
+                : `Toggle ${COLOR_ORDER[idx]} stripe`
+              : isCenterMode || isCornerMode
+                ? DIGITS[idx] === 0
+                  ? "Clear notes"
+                  : `${isCenterMode ? "Center" : "Corner"} note ${DIGITS[idx]}`
+                : DIGITS[idx] === 0
+                  ? "Clear value"
+                  : `Place ${DIGITS[idx]}`;
 
-            const digit = DIGITS[idx]!;
+            const content = (() => {
+              if (DIGITS[idx] === 0) return <Eraser />;
+              if (isColorMode) {
+                const color = COLOR_ORDER[idx]!;
+                return (
+                  <span
+                    aria-hidden
+                    className={`size-4 rounded-xs border border-foreground/10 ${COLOR_BG_CLASS[color]}`}
+                  />
+                );
+              }
 
-            if (isCornerMode) {
-              const posKey = digitToCornerMap[digit as keyof typeof digitToCornerMap];
-              return (
-                <span className={cn(CORNER_POS_CLASSES[posKey], "text-xs leading-none font-semibold tracking-tight")}>
-                  {digit}
-                </span>
-              );
-            }
+              const digit = DIGITS[idx]!;
 
-            // Center or Normal mode
-            return <span className={isCenterMode ? "text-xs" : "text-base"}>{digit}</span>;
-          })();
+              if (isCornerMode) {
+                const posKey = digitToCornerMap[digit as keyof typeof digitToCornerMap];
+                return (
+                  <span
+                    className={cn(
+                      CORNER_POS_CLASSES[posKey],
+                      "text-xxs font-serif leading-none font-semibold tracking-tight",
+                    )}
+                  >
+                    {digit}
+                  </span>
+                );
+              }
 
-          return (
-            <Button
-              key={idx}
-              size="icon"
-              variant="outline"
-              aria-label={aria}
-              title={title}
-              className={cn("relative", DIGITS[idx] === 0 ? "col-start-2" : undefined)}
-              onClick={() => handleAdaptiveClick(idx)}
-            >
-              {content}
-            </Button>
-          );
-        })}
+              // Center or Normal mode
+              return <span className={isCenterMode ? "text-xs font-serif" : "text-base"}>{digit}</span>;
+            })();
+
+            return (
+              <Button
+                key={idx}
+                size="icon"
+                variant="outline"
+                aria-label={aria}
+                title={title}
+                className={cn("relative", DIGITS[idx] === 0 ? "col-start-2" : undefined)}
+                onClick={() => handleAdaptiveClick(idx)}
+              >
+                {content}
+              </Button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

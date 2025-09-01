@@ -39,9 +39,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --font-sans: var(--font-ibm-plex-sans);
-  --font-serif: var(--font-ibm-plex-serif);
-  --font-mono: var(--font-ibm-plex-mono);
+  --text-xxs: 0.55rem;
 }
 
 :root {
