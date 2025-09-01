@@ -2,9 +2,9 @@
 "use client";
 
 import { SudokuGrid } from "@/components/sudoku/grid";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Eraser, Paintbrush, Pencil, Share } from "lucide-react";
+import { Binary, ClipboardPaste, Eraser, FileUp, LinkIcon, Paintbrush, Pencil, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
@@ -55,6 +55,11 @@ export default function Home() {
 
   // Ref to call imperative actions on the grid
   const gridRef = useRef<SudokuGridHandle | null>(null);
+
+  useEffect(() => {
+    tryImportFromUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pastel color buttons (ordered as requested) - without black
   const COLOR_ORDER: ColorName[] = [
@@ -143,6 +148,49 @@ export default function Home() {
     }
   };
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const importFromText = (text: string) => {
+    try {
+      if (!text?.startsWith("SG1|")) throw new Error("Invalid payload");
+      gridRef.current?.importState(text);
+    } catch (e) {
+      console.error(e);
+      alert((e as Error).message || "Failed to import");
+    }
+  };
+
+  const handlePasteClick = async () => {
+    try {
+      const txt = await navigator.clipboard.readText();
+      importFromText(txt);
+    } catch {
+      const txt = prompt("Paste your SG1 payload here:");
+      if (txt) importFromText(txt);
+    }
+  };
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const txt = await f.text();
+    importFromText(txt.trim());
+    e.target.value = "";
+  };
+
+  const handleFileClick = () => fileInputRef.current?.click();
+
+  const tryImportFromUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get("state") || url.hash.replace(/^#state=/, "");
+      if (!q) return;
+      importFromText(decodeURIComponent(q));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="space-y-4 p-8">
       <SudokuGrid
@@ -162,19 +210,6 @@ export default function Home() {
       />
 
       <div className="flex w-fit flex-col gap-2 rounded-md border p-2">
-        {/* Share */}
-        <div className="flex gap-1">
-          <Button
-            size="icon"
-            variant="outline"
-            aria-label="Share / export grid"
-            title="Share / export grid"
-            onClick={handleShare}
-          >
-            <Share />
-          </Button>
-        </div>
-
         {/* Mode toggles */}
         <div className="flex gap-1">
           <Toggle
@@ -278,6 +313,42 @@ export default function Home() {
             );
           })}
         </div>
+
+        <Separator />
+      </div>
+
+      <div className="flex w-fit gap-1 rounded-md border p-2">
+        <Button
+          size="icon"
+          variant="outline"
+          aria-label="Share / export grid"
+          title="Share / export grid"
+          onClick={handleShare}
+        >
+          <Share />
+        </Button>
+
+        <Button
+          size="icon"
+          variant="outline"
+          aria-label="Import from clipboard / paste"
+          title="Import from clipboard / paste"
+          onClick={handlePasteClick}
+        >
+          <ClipboardPaste />
+        </Button>
+
+        <Button
+          size="icon"
+          variant="outline"
+          aria-label="Import from file"
+          title="Import from file"
+          onClick={handleFileClick}
+        >
+          <FileUp />
+        </Button>
+
+        <input ref={fileInputRef} type="file" accept=".txt,.sg1" className="hidden" onChange={handleFilePick} />
       </div>
     </div>
   );
