@@ -3,7 +3,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Pencil, Eraser } from "lucide-react";
+import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS } from "@/components/sudoku/constants";
@@ -35,9 +35,9 @@ export default function Home() {
 
   const [current, setCurrent] = useState<[number, number] | undefined>();
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
-  const [notesMode, setNotesMode] = useState<"center" | "corner" | null>(null);
+  const [notesMode, setNotesMode] = useState<"center" | "corner" | "color" | null>(null);
 
-  // Ref to call imperative actions on the grid (e.g., annotateColor)
+  // Ref to call imperative actions on the grid
   const gridRef = useRef<SudokuGridHandle | null>(null);
 
   // Pastel color buttons (ordered as requested) - without black
@@ -53,6 +53,42 @@ export default function Home() {
     "transparent",
   ];
 
+  // Digits to display in numeric modes (maps across 10 buttons)
+  const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+
+  const isColorMode = notesMode === "color";
+  const isCenterMode = notesMode === "center";
+  const isCornerMode = notesMode === "corner";
+
+  const handleAdaptiveClick = (index: number) => {
+    if (isColorMode) {
+      if (index < COLOR_ORDER.length) {
+        const color = COLOR_ORDER[index]!;
+        gridRef.current?.annotateColor(color);
+      } else {
+        // 10th button in color mode = clear all stripes
+        gridRef.current?.annotateClear();
+      }
+      return;
+    }
+
+    const d = DIGITS[index]!;
+
+    if (isCenterMode) {
+      if (d === 0) gridRef.current?.clearCenterNotes();
+      else gridRef.current?.toggleCenterNote(d);
+      return;
+    }
+    if (isCornerMode) {
+      if (d === 0) gridRef.current?.clearCornerNotes();
+      else gridRef.current?.toggleCornerNote(d);
+      return;
+    }
+
+    // normal mode: set digit (0 clears)
+    gridRef.current?.setDigit(d);
+  };
+
   return (
     <div className="space-y-4 p-8">
       <SudokuGrid
@@ -60,7 +96,7 @@ export default function Home() {
         presetGrid={sudokuGrid}
         // size={15}
         // regions={regions9}
-        pencilMode={notesMode}
+        pencilMode={notesMode === "center" ? "center" : notesMode === "corner" ? "corner" : null}
         currentCell={current}
         selectedCells={selected}
         onSelectionChange={setSelected}
@@ -70,7 +106,9 @@ export default function Home() {
           console.log("Clicked:", row, col);
         }}
       />
-      <div className="flex gap-2 rounded-md border p-2">
+
+      {/* Mode toggles */}
+      <div className="flex w-fit gap-1 rounded-md border p-2">
         <Toggle
           variant="outline"
           aria-label="Toggle Center Notes Mode"
@@ -87,29 +125,69 @@ export default function Home() {
         >
           <Binary />
         </Toggle>
-      </div>
-      {/* Color annotation buttons (stateless actions) */}
-      <div className="grid w-fit grid-cols-3 gap-1 rounded-md border p-2">
-        {COLOR_ORDER.map((name) => (
-          <Button
-            key={name}
-            variant="outline"
-            aria-label={`Apply ${name} color to selection`}
-            onClick={() => gridRef.current?.annotateColor(name)}
-            title={`Toggle ${name} stripe`}
-          >
-            <span aria-hidden className={`size-5 rounded-xs border border-black/10 ${COLOR_BG_CLASS[name]}`} />
-          </Button>
-        ))}
-        {/* Clear color button */}
-        <Button
+        <Toggle
           variant="outline"
-          aria-label="Clear color from selection"
-          onClick={() => gridRef.current?.annotateClear()}
-          title="Clear all stripes"
+          aria-label="Toggle Color Annotation Mode"
+          pressed={notesMode === "color"}
+          onPressedChange={(value) => setNotesMode(value ? "color" : null)}
         >
-          <Eraser />
-        </Button>
+          <Paintbrush />
+        </Toggle>
+      </div>
+
+      {/* Adaptive 10-button palette */}
+      <div className="grid w-fit grid-cols-3 gap-1 rounded-md border p-2">
+        {Array.from({ length: 10 }).map((_, idx) => {
+          const isClearButtonInColor = isColorMode && idx === 9; // 10th button clears colors
+          const aria = isColorMode
+            ? isClearButtonInColor
+              ? "Clear color from selection"
+              : `Apply ${COLOR_ORDER[idx]} color to selection`
+            : isCenterMode
+              ? `Toggle center note ${DIGITS[idx]}`
+              : isCornerMode
+                ? `Toggle corner note ${DIGITS[idx]}`
+                : `Set digit ${DIGITS[idx]}`;
+
+          const title = isColorMode
+            ? isClearButtonInColor
+              ? "Clear all stripes"
+              : `Toggle ${COLOR_ORDER[idx]} stripe`
+            : isCenterMode || isCornerMode
+              ? DIGITS[idx] === 0
+                ? "Clear notes"
+                : `${isCenterMode ? "Center" : "Corner"} note ${DIGITS[idx]}`
+              : DIGITS[idx] === 0
+                ? "Clear value"
+                : `Place ${DIGITS[idx]}`;
+
+          const content = (() => {
+            if (DIGITS[idx] === 0) return <Eraser />;
+            if (isColorMode) {
+              const color = COLOR_ORDER[idx]!;
+              return (
+                <span aria-hidden className={`size-4 rounded-xs border border-black/10 ${COLOR_BG_CLASS[color]}`} />
+              );
+            }
+            // numeric modes
+            const small = isCenterMode || isCornerMode;
+            return <span className={small ? "text-xs" : undefined}>{DIGITS[idx]}</span>;
+          })();
+
+          return (
+            <Button
+              key={idx}
+              size="icon"
+              variant="outline"
+              aria-label={aria}
+              title={title}
+              className={DIGITS[idx] === 0 ? "col-start-2" : undefined}
+              onClick={() => handleAdaptiveClick(idx)}
+            >
+              {content}
+            </Button>
+          );
+        })}
       </div>
     </div>
   );

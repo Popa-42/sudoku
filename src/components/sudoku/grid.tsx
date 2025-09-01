@@ -23,7 +23,7 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   presetGrid?: number[][];
   editedGrid?: number[][];
   pencilGrid?: number[][][];
-  pencilMode?: "center" | "corner" | null;
+  pencilMode?: "center" | "corner" | "color" | null;
   currentCell?: Cell;
   selectedCells?: boolean[][];
   onCellSelect?: (info: CellSelectInfo) => void;
@@ -176,7 +176,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     [currentCell, onCurrentCellChange],
   );
 
-  // Expose imperative color annotation API (toggle colors per cell; supports transparent)
+  // Expose imperative color annotation API and new digit/note methods
   useImperativeHandle(
     ref,
     (): SudokuGridHandle => ({
@@ -205,8 +205,70 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
           return next;
         });
       },
+      setDigit: (value: number) => {
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setUserGrid((prev) => {
+          const next = prev.map((row) => row.slice());
+          for (const [r, c] of targets) {
+            if (isPreset(r, c)) continue;
+            next[r][c] = value > 0 ? value : 0;
+          }
+          return next;
+        });
+      },
+      toggleCenterNote: (digit: number) => {
+        if (digit < 1 || digit > size) return;
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setPencils((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          for (const [r, c] of targets) {
+            if (isPreset(r, c)) continue;
+            next[r][c][digit] = next[r][c][digit] ? 0 : 1;
+          }
+          return next;
+        });
+      },
+      toggleCornerNote: (digit: number) => {
+        if (digit < 1 || digit > size) return;
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setCornerPencils((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          for (const [r, c] of targets) {
+            if (isPreset(r, c)) continue;
+            next[r][c][digit] = next[r][c][digit] ? 0 : 1;
+          }
+          return next;
+        });
+      },
+      clearCenterNotes: () => {
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setPencils((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          for (const [r, c] of targets) {
+            if (isPreset(r, c)) continue;
+            next[r][c].fill(0);
+          }
+          return next;
+        });
+      },
+      clearCornerNotes: () => {
+        const targets = selectionTargets(selection, current);
+        if (!targets.length) return;
+        setCornerPencils((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          for (const [r, c] of targets) {
+            if (isPreset(r, c)) continue;
+            next[r][c].fill(0);
+          }
+          return next;
+        });
+      },
     }),
-    [selection, current],
+    [selection, current, isPreset, size],
   );
 
   // pointer → cell mapping

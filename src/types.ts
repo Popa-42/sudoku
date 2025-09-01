@@ -27,8 +27,15 @@ export type ColorName =
 // Imperative API exposed by the SudokuGrid component
 
 export type SudokuGridHandle = {
+  // Color annotations
   annotateColor: (color: ColorName) => void;
   annotateClear: () => void;
+  // Values and notes
+  setDigit: (value: number) => void; // 1..9 sets value, 0 clears
+  toggleCenterNote: (digit: number) => void; // 1..9 toggles center notes
+  toggleCornerNote: (digit: number) => void; // 1..9 toggles corner notes
+  clearCenterNotes: () => void;
+  clearCornerNotes: () => void;
 };
 
 export { type RectBox, type Cell, type CellSelectInfo };
