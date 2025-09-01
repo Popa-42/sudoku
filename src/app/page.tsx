@@ -4,7 +4,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, ClipboardPaste, Eraser, FileUp, LinkIcon, Paintbrush, Pencil, Share } from "lucide-react";
+import { Binary, ClipboardPaste, Eraser, FileUp, Paintbrush, Pencil, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
