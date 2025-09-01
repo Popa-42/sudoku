@@ -4,7 +4,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
+import { Binary, Eraser, Paintbrush, Pencil, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
@@ -105,6 +105,44 @@ export default function Home() {
     gridRef.current?.setDigit(d);
   };
 
+  const handleShare = async () => {
+    try {
+      const data = gridRef.current?.exportState();
+      if (!data) return;
+
+      if (typeof navigator !== "undefined") {
+        const nav = navigator as Navigator & {
+          share?: (data: { title?: string; text?: string; url?: string }) => Promise<void>;
+        };
+        if (typeof nav.share === "function") {
+          try {
+            await nav.share({ title: "Sudoku", text: data });
+            return;
+          } catch (_err) {
+            // fall back
+          }
+        }
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data);
+        return;
+      }
+
+      const blob = new Blob([data], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sudoku.sg1.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="space-y-4 p-8">
       <SudokuGrid
@@ -124,6 +162,19 @@ export default function Home() {
       />
 
       <div className="flex w-fit flex-col gap-2 rounded-md border p-2">
+        {/* Share */}
+        <div className="flex gap-1">
+          <Button
+            size="icon"
+            variant="outline"
+            aria-label="Share / export grid"
+            title="Share / export grid"
+            onClick={handleShare}
+          >
+            <Share />
+          </Button>
+        </div>
+
         {/* Mode toggles */}
         <div className="flex gap-1">
           <Toggle
@@ -200,7 +251,7 @@ export default function Home() {
                   <span
                     className={cn(
                       CORNER_POS_CLASSES[posKey],
-                      "text-xxs font-serif leading-none font-semibold tracking-tight",
+                      "font-serif text-xxs leading-none font-semibold tracking-tight",
                     )}
                   >
                     {digit}

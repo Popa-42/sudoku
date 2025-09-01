@@ -34,6 +34,130 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   dividerClassName?: string;
 };
 
+// --- Compact export/import helpers (version: SG1) ---
+const HEADER = "SG1|" as const;
+const colorToCode: Record<ColorName, string> = {
+  red: "r",
+  orange: "o",
+  yellow: "y",
+  green: "g",
+  blue: "b",
+  cyan: "c",
+  violet: "v",
+  pink: "p",
+  transparent: "t",
+};
+const codeToColor: Record<string, ColorName> = Object.fromEntries(
+  Object.entries(colorToCode).map(([k, v]) => [v, k as ColorName]),
+) as Record<string, ColorName>;
+
+function toBase36(n: number): string {
+  return n.toString(36);
+}
+function fromBase36(s: string): number {
+  return parseInt(s, 36);
+}
+function encodeNumberGrid(grid: number[][], size: number): string {
+  const n = size * size;
+  const out: string[] = new Array(n);
+  let i = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const v = grid?.[r]?.[c] ?? 0;
+      if (v < 0 || v >= 36) throw new Error("Value out of encodable range (0..35)");
+      out[i++] = toBase36(v);
+    }
+  }
+  return out.join("");
+}
+function decodeNumberGrid(s: string, size: number): number[][] {
+  const n = size * size;
+  if (s.length !== n) throw new Error("Corrupt state: number grid length mismatch");
+  const grid = createNumberGrid(size);
+  for (let i = 0; i < n; i++) {
+    const r = Math.floor(i / size);
+    const c = i % size;
+    grid[r][c] = fromBase36(s[i]) || 0;
+  }
+  return grid;
+}
+function maskWidthForSize(size: number): number {
+  // width in base36 needed to store (1<<size)-1; safe for size <= 31
+  const maxMask = Math.max(0, Math.pow(2, size) - 1);
+  return Math.max(1, maxMask.toString(36).length);
+}
+function encodeCubeMask(cube: number[][][], size: number): { width: number; data: string } {
+  const n = size * size;
+  const width = maskWidthForSize(size);
+  const parts: string[] = new Array(n);
+  let idx = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      let mask = 0;
+      const cell = cube?.[r]?.[c];
+      if (cell) {
+        for (let d = 1; d <= size; d++) if (cell[d]) mask |= 1 << (d - 1);
+      }
+      parts[idx++] = mask.toString(36).padStart(width, "0");
+    }
+  }
+  return { width, data: parts.join("") };
+}
+function decodeCubeMask(payload: string, size: number): number[][][] {
+  if (!payload || payload.length < 1) throw new Error("Corrupt state: empty mask payload");
+  const width = fromBase36(payload[0]);
+  if (width < 1 || width > 10) throw new Error("Corrupt state: invalid mask width");
+  const body = payload.slice(1);
+  const expected = size * size * width;
+  if (body.length !== expected) throw new Error("Corrupt state: mask body length mismatch");
+  const cube = createDigitCube(size);
+  let i = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const chunk = body.slice(i, i + width);
+      i += width;
+      const mask = parseInt(chunk, 36) || 0;
+      for (let d = 1; d <= size; d++) cube[r][c][d] = (mask >> (d - 1)) & 1 ? 1 : 0;
+    }
+  }
+  return cube;
+}
+function encodeColors(grid: ColorName[][][], size: number): string {
+  let out = "";
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const list = grid?.[r]?.[c] ?? [];
+      const mapped = list.map((clr) => colorToCode[clr] ?? "").join("");
+      if (mapped.length >= 36) throw new Error("Too many color stripes in a cell (max 35)");
+      out += toBase36(mapped.length) + mapped;
+    }
+  }
+  return out;
+}
+function decodeColors(s: string, size: number): ColorName[][][] {
+  const grid: ColorName[][][] = Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => [] as ColorName[]),
+  );
+  let i = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (i >= s.length) throw new Error("Corrupt state: truncated colors segment");
+      const len = fromBase36(s[i]);
+      i += 1;
+      const seg = s.slice(i, i + len);
+      i += len;
+      const list: ColorName[] = [];
+      for (let k = 0; k < seg.length; k++) {
+        const clr = codeToColor[seg[k]];
+        if (clr) list.push(clr);
+      }
+      grid[r][c] = list;
+    }
+  }
+  // Ignore any trailing characters up to next '|', parser will split segments appropriately
+  return grid;
+}
+
 /* ---------- Component ---------- */
 const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(function SudokuGrid(
   {
@@ -274,8 +398,44 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
           return next;
         });
       },
+      exportState: () => {
+        // Header + size
+        const sizeStr = toBase36(size);
+        const preset = encodeNumberGrid(presetGrid ?? createNumberGrid(size), size);
+        const user = encodeNumberGrid(userGrid, size);
+        const cCenter = encodeCubeMask(pencils, size);
+        const cCorner = encodeCubeMask(cornerPencils, size);
+        const colors = encodeColors(colorGrid, size);
+        // center and corner include their widths as a leading base36 char
+        const centerSeg = toBase36(cCenter.width) + cCenter.data;
+        const cornerSeg = toBase36(cCorner.width) + cCorner.data;
+        return [HEADER.slice(0, -1), sizeStr, preset, user, centerSeg, cornerSeg, colors, ""].join("|");
+      },
+      importState: (encoded: string) => {
+        if (!encoded || !encoded.startsWith(HEADER)) throw new Error("Invalid state payload");
+        // SG1|<size>|<preset>|<user>|<center>|<corner>|<colors>|
+        const parts = encoded.split("|");
+        // parts: [ 'SG1', size, preset, user, center, corner, colors, ... ]
+        if (parts.length < 7) throw new Error("Corrupt state: missing segments");
+        const sizeStr = parts[1];
+        const parsedSize = fromBase36(sizeStr);
+        if (parsedSize !== size) throw new Error(`State size ${parsedSize} does not match grid size ${size}`);
+        const userStr = parts[3];
+        const centerStr = parts[4];
+        const cornerStr = parts[5];
+        const colorsStr = parts[6];
+        // We do not set preset (it's a prop); we only restore user state
+        const nextUser = decodeNumberGrid(userStr, size);
+        const nextCenter = decodeCubeMask(centerStr, size);
+        const nextCorner = decodeCubeMask(cornerStr, size);
+        const nextColors = decodeColors(colorsStr, size);
+        setUserGrid(nextUser);
+        setPencils(nextCenter);
+        setCornerPencils(nextCorner);
+        setColorGrid(nextColors);
+      },
     }),
-    [selection, current, isPreset, size],
+    [selection, current, isPreset, size, presetGrid, userGrid, pencils, cornerPencils, colorGrid],
   );
 
   // pointer -> cell mapping
@@ -633,7 +793,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
-                        isPreset(r, c) ? "text-foreground" : "text-blue-700 dark:text-blue-500 font-bold font-serif",
+                        isPreset(r, c) ? "text-foreground" : "text-blue-700 dark:text-blue-400 font-bold font-serif",
                       )}
                     >
                       {/* Color stripes background */}

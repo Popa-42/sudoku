@@ -27,6 +27,9 @@ export type SudokuGridHandle = {
   toggleCornerNote: (digit: number) => void; // 1..9 toggles corner notes
   clearCenterNotes: () => void;
   clearCornerNotes: () => void;
+  // Compact state import/export (values, notes, colors). String format is versioned and self-contained.
+  exportState: () => string;
+  importState: (encoded: string) => void;
 };
 
 export { type RectBox, type Cell, type CellSelectInfo };
