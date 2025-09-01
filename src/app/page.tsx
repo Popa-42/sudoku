@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 // Maps digits 1-9 to their keypad-like corner positions
 const digitToCornerMap = {
@@ -133,13 +134,18 @@ export default function Home() {
   };
 
   // Import helpers
-  const importFromText = (text: string) => {
+  const importFromText = (text: string): boolean => {
+    if (!text?.startsWith("SG1|")) {
+      alert("Invalid payload");
+      return false;
+    }
     try {
-      if (!text?.startsWith("SG1|")) throw new Error("Invalid payload");
       gridRef.current?.importState(text);
+      return true;
     } catch (e) {
       console.error(e);
       alert((e as Error).message || "Failed to import");
+      return false;
     }
   };
 
@@ -225,6 +231,24 @@ export default function Home() {
       console.error(e);
     }
   };
+
+  // Dark mode state
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
+      const prefersDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+      const next = saved ? saved === "dark" : !!prefersDark;
+      setIsDark(next);
+      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", next);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", isDark);
+      if (typeof window !== "undefined") localStorage.setItem("theme", isDark ? "dark" : "light");
+    } catch {}
+  }, [isDark]);
 
   return (
     <div className="space-y-4 p-8">
@@ -452,6 +476,14 @@ export default function Home() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Dark mode toggle */}
+        <div className="ml-2 flex items-center gap-2">
+          <Label htmlFor="dark-switch" className="text-xs">
+            Dark
+          </Label>
+          <Switch id="dark-switch" checked={isDark} onCheckedChange={(v) => setIsDark(v)} />
+        </div>
       </div>
     </div>
   );
