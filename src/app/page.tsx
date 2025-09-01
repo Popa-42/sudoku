@@ -4,7 +4,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, ClipboardPaste, Eraser, FileUp, Paintbrush, Pencil, Share } from "lucide-react";
+import { Binary, Eraser, FileUp, Paintbrush, Pencil, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
@@ -146,16 +146,6 @@ export default function Home() {
       console.error(e);
       alert((e as Error).message || "Failed to import");
       return false;
-    }
-  };
-
-  const handlePasteClick = async () => {
-    try {
-      const txt = await navigator.clipboard.readText();
-      importFromText(txt);
-    } catch {
-      const txt = prompt("Paste your SG1 payload here:");
-      if (txt) importFromText(txt);
     }
   };
 
@@ -383,16 +373,6 @@ export default function Home() {
           onClick={handleShare}
         >
           <Share />
-        </Button>
-
-        <Button
-          size="icon"
-          variant="outline"
-          aria-label="Import from clipboard / paste"
-          title="Import from clipboard / paste"
-          onClick={handlePasteClick}
-        >
-          <ClipboardPaste />
         </Button>
 
         {/* Upload dialog */}
