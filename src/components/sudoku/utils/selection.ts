@@ -1,3 +1,4 @@
+// /src/components/sudoku/utils/selection.ts
 import { Cell, RectBox } from "@/types";
 
 export function createEmptySelection(size: number): boolean[][] {
