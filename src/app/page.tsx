@@ -6,7 +6,21 @@ import { Toggle } from "@/components/ui/toggle";
 import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
-import { COLOR_BG_CLASS } from "@/components/sudoku/constants";
+import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
+import { cn } from "@/lib/utils";
+
+// Maps digits 1-9 to their keypad-like corner positions
+const digitToCornerMap = {
+  1: "tl",
+  2: "tc",
+  3: "tr",
+  4: "lc",
+  5: "cc",
+  6: "rc",
+  7: "bl",
+  8: "bc",
+  9: "br",
+} as const;
 
 export default function Home() {
   // const regions9: number[][] = [
@@ -169,9 +183,20 @@ export default function Home() {
                 <span aria-hidden className={`size-4 rounded-xs border border-black/10 ${COLOR_BG_CLASS[color]}`} />
               );
             }
-            // numeric modes
-            const small = isCenterMode || isCornerMode;
-            return <span className={small ? "text-xs" : undefined}>{DIGITS[idx]}</span>;
+
+            const digit = DIGITS[idx]!;
+
+            if (isCornerMode) {
+              const posKey = digitToCornerMap[digit as keyof typeof digitToCornerMap];
+              return (
+                <span className={cn(CORNER_POS_CLASSES[posKey], "text-xs leading-none font-semibold tracking-tight")}>
+                  {digit}
+                </span>
+              );
+            }
+
+            // Center or Normal mode
+            return <span className={isCenterMode ? "text-xs" : "text-base"}>{digit}</span>;
           })();
 
           return (
@@ -181,7 +206,7 @@ export default function Home() {
               variant="outline"
               aria-label={aria}
               title={title}
-              className={DIGITS[idx] === 0 ? "col-start-2" : undefined}
+              className={cn("relative", DIGITS[idx] === 0 ? "col-start-2" : undefined)}
               onClick={() => handleAdaptiveClick(idx)}
             >
               {content}

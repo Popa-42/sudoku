@@ -1,4 +1,3 @@
-// src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
