@@ -4,7 +4,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Eraser, FileUp, Paintbrush, Pencil, Share } from "lucide-react";
+import { Binary, Eraser, FileUp, FolderOpen, Paintbrush, Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
@@ -372,14 +372,14 @@ export default function Home() {
           title="Share / export grid"
           onClick={handleShare}
         >
-          <Share />
+          <Save />
         </Button>
 
         {/* Upload dialog */}
         <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
           <DialogTrigger asChild>
             <Button size="icon" variant="outline" aria-label="Upload" title="Upload">
-              <FileUp />
+              <FolderOpen />
             </Button>
           </DialogTrigger>
           <DialogContent>
