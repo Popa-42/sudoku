@@ -10,6 +10,17 @@ import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 // Maps digits 1-9 to their keypad-like corner positions
 const digitToCornerMap = {
@@ -114,42 +125,14 @@ export default function Home() {
     try {
       const data = gridRef.current?.exportState();
       if (!data) return;
-
-      if (typeof navigator !== "undefined") {
-        const nav = navigator as Navigator & {
-          share?: (data: { title?: string; text?: string; url?: string }) => Promise<void>;
-        };
-        if (typeof nav.share === "function") {
-          try {
-            await nav.share({ title: "Sudoku", text: data });
-            return;
-          } catch (_err) {
-            // fall back
-          }
-        }
-      }
-
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(data);
-        return;
-      }
-
-      const blob = new Blob([data], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "sudoku.sg1.txt";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      setExportText(data);
+      setExportOpen(true);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
+  // Import helpers
   const importFromText = (text: string) => {
     try {
       if (!text?.startsWith("SG1|")) throw new Error("Invalid payload");
@@ -170,15 +153,38 @@ export default function Home() {
     }
   };
 
-  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload dialog state and handlers
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadText, setUploadText] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadFileRef = useRef<HTMLInputElement | null>(null);
+
+  const handleDialogFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    const txt = await f.text();
-    importFromText(txt.trim());
+    const txt = (await f.text()).trim();
+    setUploadText(txt);
+    setUploadError(null);
     e.target.value = "";
   };
 
-  const handleFileClick = () => fileInputRef.current?.click();
+  const handleDialogFileClick = () => uploadFileRef.current?.click();
+
+  const handleDialogSend = () => {
+    const txt = uploadText.trim();
+    if (!txt) {
+      setUploadError("Please paste a state or choose a file.");
+      return;
+    }
+    if (!txt.startsWith("SG1|")) {
+      setUploadError("Invalid payload. Expected text starting with SG1|.");
+      return;
+    }
+    setUploadError(null);
+    importFromText(txt);
+    setUploadOpen(false);
+    setUploadText("");
+  };
 
   const tryImportFromUrl = () => {
     try {
@@ -186,6 +192,35 @@ export default function Home() {
       const q = url.searchParams.get("state") || url.hash.replace(/^#state=/, "");
       if (!q) return;
       importFromText(decodeURIComponent(q));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Export dialog state and handlers
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportText, setExportText] = useState("");
+
+  const handleExportCopy = async () => {
+    try {
+      await navigator.clipboard?.writeText(exportText);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to copy");
+    }
+  };
+
+  const handleExportDownload = () => {
+    try {
+      const blob = new Blob([exportText], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sudoku.sg1.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
     }
@@ -313,11 +348,9 @@ export default function Home() {
             );
           })}
         </div>
-
-        <Separator />
       </div>
 
-      <div className="flex w-fit gap-1 rounded-md border p-2">
+      <div className="flex w-fit items-center gap-1 rounded-md border p-2">
         <Button
           size="icon"
           variant="outline"
@@ -338,17 +371,87 @@ export default function Home() {
           <ClipboardPaste />
         </Button>
 
-        <Button
-          size="icon"
-          variant="outline"
-          aria-label="Import from file"
-          title="Import from file"
-          onClick={handleFileClick}
-        >
-          <FileUp />
-        </Button>
+        {/* Upload dialog */}
+        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+          <DialogTrigger asChild>
+            <Button size="icon" variant="outline" aria-label="Upload" title="Upload">
+              <FileUp />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Upload sudoku state</DialogTitle>
+              <DialogDescription>Paste your SG1 payload or choose a file from your device.</DialogDescription>
+            </DialogHeader>
 
-        <input ref={fileInputRef} type="file" accept=".txt,.sg1" className="hidden" onChange={handleFilePick} />
+            <div className="grid gap-2">
+              <Label htmlFor="sg1">Sudoku state</Label>
+              <Textarea
+                id="sg1"
+                placeholder="SG1|..."
+                value={uploadText}
+                onChange={(e) => setUploadText(e.target.value)}
+                aria-invalid={uploadError ? true : undefined}
+                spellCheck={false}
+              />
+              {uploadError ? (
+                <p className="text-sm text-destructive">{uploadError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tip: payload should start with SG1|</p>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={handleDialogFileClick} type="button">
+                  <FileUp className="mr-2" /> Choose file
+                </Button>
+                <input
+                  ref={uploadFileRef}
+                  type="file"
+                  accept=".txt,.sg1"
+                  className="hidden"
+                  onChange={handleDialogFilePick}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUploadOpen(false)} type="button">
+                Cancel
+              </Button>
+              <Button onClick={handleDialogSend} type="button">
+                Send
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Export dialog */}
+        <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+          {/* Share button already opens dialog via handleShare */}
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Export sudoku state</DialogTitle>
+              <DialogDescription>Copy or download your SG1 payload.</DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-2">
+              <Label htmlFor="sg1-out">Sudoku state</Label>
+              <Textarea id="sg1-out" value={exportText} readOnly spellCheck={false} />
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setExportOpen(false)} type="button">
+                Close
+              </Button>
+              <Button variant="secondary" onClick={handleExportCopy} type="button">
+                Copy
+              </Button>
+              <Button onClick={handleExportDownload} type="button">
+                Download
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
