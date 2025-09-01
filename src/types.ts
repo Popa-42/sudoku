@@ -1,3 +1,4 @@
+// /src/types.ts
 import React from "react";
 
 type RectBox = { rows: number; cols: number };

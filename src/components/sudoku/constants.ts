@@ -1,3 +1,4 @@
+// /src/components/sudoku/constants.ts
 import { ColorName } from "@/types";
 
 export const SEL_COLOR_VAR = "[--sel:theme(colors.blue.300)] dark:[--sel:theme(colors.blue.800)]" as const;

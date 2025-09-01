@@ -1,3 +1,4 @@
+// /src/components/sudoku/utils/grids.ts
 import { Cell } from "@/types";
 import { hasAnySelected, stackFromMatrix } from "@/components/sudoku/utils/selection";
 
