@@ -4,7 +4,7 @@
 import { SudokuGrid } from "@/components/sudoku/grid";
 import React, { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { Binary, Eraser, FileUp, FolderOpen, Paintbrush, Pencil, Save } from "lucide-react";
+import { Binary, Eraser, FileUp, Paintbrush, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ColorName, SudokuGridHandle } from "@/types";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Menubar,
@@ -65,17 +64,17 @@ export default function Home() {
   //   [6, 6, 6, 7, 7, 7, 8, 8, 8],
   // ];
 
-  const sudokuGrid = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  ];
+  // const presetGrid = [
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  //   [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  // ];
 
   const [current, setCurrent] = useState<[number, number] | undefined>();
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
@@ -483,16 +482,12 @@ export default function Home() {
       </Menubar>
       <SudokuGrid
         ref={gridRef}
-        presetGrid={sudokuGrid}
-        // size={15}
-        // regions={regions9}
         pencilMode={notesMode === "center" ? "center" : notesMode === "corner" ? "corner" : null}
         currentCell={current}
         selectedCells={selected}
         onSelectionChange={setSelected}
         onCurrentCellChange={setCurrent}
         onCellSelect={({ row, col }) => {
-          // optional centralized hook
           console.log("Clicked:", row, col);
         }}
       />

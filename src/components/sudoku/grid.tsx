@@ -1,3 +1,4 @@
+// /src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
@@ -209,6 +210,8 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   const [colorGrid, setColorGrid] = useState<ColorName[][][]>(() =>
     Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])),
   );
+  // internal preset grid
+  const [preset, setPreset] = useState<number[][]>(() => presetGrid ?? createNumberGrid(size));
 
   // --- History management ---
   const historyRef = useRef<string[]>([]);
@@ -218,15 +221,15 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
   const makeSnapshot = useCallback(() => {
     const sizeStr = toBase36(size);
-    const preset = encodeNumberGrid(presetGrid ?? createNumberGrid(size), size);
+    const presetEnc = encodeNumberGrid(preset ?? createNumberGrid(size), size);
     const user = encodeNumberGrid(userGrid, size);
     const cCenter = encodeCubeMask(pencils, size);
     const cCorner = encodeCubeMask(cornerPencils, size);
     const colors = encodeColors(colorGrid, size);
     const centerSeg = toBase36(cCenter.width) + cCenter.data;
     const cornerSeg = toBase36(cCorner.width) + cCorner.data;
-    return [HEADER.slice(0, -1), sizeStr, preset, user, centerSeg, cornerSeg, colors, ""].join("|");
-  }, [size, presetGrid, userGrid, pencils, cornerPencils, colorGrid]);
+    return [HEADER.slice(0, -1), sizeStr, presetEnc, user, centerSeg, cornerSeg, colors, ""].join("|");
+  }, [size, preset, userGrid, pencils, cornerPencils, colorGrid]);
 
   const pushHistory = useCallback((snap: string) => {
     if (suppressHistoryRef.current > 0) return;
@@ -246,6 +249,10 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     pushHistory(snap);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userGrid, pencils, cornerPencils, colorGrid]);
+
+  useEffect(() => {
+    setPreset(presetGrid ?? createNumberGrid(size));
+  }, [size, presetGrid]);
 
   useEffect(() => {
     setInternalSelection(emptySelection);
@@ -277,7 +284,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   const current = currentCell ?? internalCurrent;
   const selection = normalizeSelection(selectedCells ?? internalSelection, size);
 
-  const isPreset = useCallback((r: number, c: number) => (presetGrid?.[r]?.[c] ?? 0) > 0, [presetGrid]);
+  const isPreset = useCallback((r: number, c: number) => (preset?.[r]?.[c] ?? 0) > 0, [preset]);
 
   useEffect(() => {
     if (!hasAnySelected(selection)) {
@@ -441,7 +448,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       exportState: () => {
         // Header + size
         const sizeStr = toBase36(size);
-        const preset = encodeNumberGrid(presetGrid ?? createNumberGrid(size), size);
+        const presetEnc = encodeNumberGrid(preset ?? createNumberGrid(size), size);
         const user = encodeNumberGrid(userGrid, size);
         const cCenter = encodeCubeMask(pencils, size);
         const cCorner = encodeCubeMask(cornerPencils, size);
@@ -449,28 +456,49 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         // center and corner include their widths as a leading base36 char
         const centerSeg = toBase36(cCenter.width) + cCenter.data;
         const cornerSeg = toBase36(cCorner.width) + cCorner.data;
-        return [HEADER.slice(0, -1), sizeStr, preset, user, centerSeg, cornerSeg, colors, ""].join("|");
+        return [HEADER.slice(0, -1), sizeStr, presetEnc, user, centerSeg, cornerSeg, colors, ""].join("|");
       },
       importState: (encoded: string) => {
         if (!encoded || !encoded.startsWith(HEADER)) throw new Error("Invalid state payload");
         // SG1|<size>|<preset>|<user>|<center>|<corner>|<colors>|
         const parts = encoded.split("|");
-        // parts: [ 'SG1', size, preset, user, center, corner, colors, ... ]
         if (parts.length < 7) throw new Error("Corrupt state: missing segments");
+
         const sizeStr = parts[1];
         const parsedSize = fromBase36(sizeStr);
         if (parsedSize !== size) throw new Error(`State size ${parsedSize} does not match grid size ${size}`);
+
+        const presetStr = parts[2];
         const userStr = parts[3];
         const centerStr = parts[4];
         const cornerStr = parts[5];
         const colorsStr = parts[6];
 
-        // Suppress history when importing state
         suppressHistoryRef.current++;
-        setUserGrid(decodeNumberGrid(userStr, size));
-        setPencils(decodeCubeMask(centerStr, size));
-        setCornerPencils(decodeCubeMask(cornerStr, size));
-        setColorGrid(decodeColors(colorsStr, size));
+
+        const nextPreset = decodeNumberGrid(presetStr, size);
+        const nextUser = decodeNumberGrid(userStr, size);
+        const nextCenter = decodeCubeMask(centerStr, size);
+        const nextCorner = decodeCubeMask(cornerStr, size);
+        const nextColors = decodeColors(colorsStr, size);
+
+        // Ensure preset cells are authoritative
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            if ((nextPreset?.[r]?.[c] ?? 0) > 0) {
+              nextUser[r][c] = 0;
+              nextCenter[r][c].fill(0);
+              nextCorner[r][c].fill(0);
+            }
+          }
+        }
+
+        setPreset(nextPreset);
+        setUserGrid(nextUser);
+        setPencils(nextCenter);
+        setCornerPencils(nextCorner);
+        setColorGrid(nextColors);
+
         setTimeout(() => {
           suppressHistoryRef.current--;
         }, 0);
@@ -534,7 +562,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return true;
       },
     }),
-    [selection, current, isPreset, size, presetGrid, userGrid, pencils, cornerPencils, colorGrid],
+    [selection, current, isPreset, size, preset, userGrid, pencils, cornerPencils, colorGrid],
   );
 
   // pointer -> cell mapping
@@ -867,7 +895,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                 const selected = isSelected(r, c);
                 // selection highlight is drawn with absolute edge spans (above color stripes)
 
-                const presetVal = presetGrid?.[r]?.[c] ?? 0;
+                const presetVal = preset?.[r]?.[c] ?? 0;
                 const userVal = userGrid?.[r]?.[c] ?? 0;
                 const displayVal = presetVal > 0 ? presetVal : userVal > 0 ? userVal : "";
 
