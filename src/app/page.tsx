@@ -19,9 +19,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Menubar,
+  MenubarCheckboxItem,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarRadioGroup,
+  MenubarRadioItem,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+
+type Note = "center" | "corner" | "color" | null;
 
 // Maps digits 1-9 to their keypad-like corner positions
 const digitToCornerMap = {
@@ -63,7 +80,7 @@ export default function Home() {
 
   const [current, setCurrent] = useState<[number, number] | undefined>();
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
-  const [notesMode, setNotesMode] = useState<"center" | "corner" | "color" | null>(null);
+  const [notesMode, setNotesMode] = useState<Note>(null);
 
   // Ref to call imperative actions on the grid
   const gridRef = useRef<SudokuGridHandle | null>(null);
@@ -241,7 +258,103 @@ export default function Home() {
   }, [isDark]);
 
   return (
-    <div className="space-y-4 p-8">
+    <div className="space-y-4 p-4">
+      <Menubar className="w-fit">
+        <MenubarMenu>
+          <MenubarTrigger>File</MenubarTrigger>
+          <MenubarContent>
+            <MenubarSub>
+              <MenubarSubTrigger>Save</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>
+                  Save file
+                  <MenubarShortcut>
+                    <kbd>Ctrl</kbd>
+                    <kbd>S</kbd>
+                  </MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem>Share Link</MenubarItem>
+                <MenubarItem>Copy SG1 payload</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSub>
+              <MenubarSubTrigger>Open</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>
+                  Open file
+                  <MenubarShortcut>
+                    <kbd>Ctrl</kbd>
+                    <kbd>O</kbd>
+                  </MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem>Paste SG1 payload</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSeparator />
+            <MenubarItem>
+              Reset current puzzle
+              <MenubarShortcut>
+                <kbd>Ctrl</kbd>
+                <kbd>R</kbd>
+              </MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+          <MenubarTrigger>Edit</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem>
+              Undo
+              <MenubarShortcut>
+                <kbd>Ctrl</kbd>
+                <kbd>Z</kbd>
+              </MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem>
+              Redo
+              <MenubarShortcut>
+                <kbd>Ctrl</kbd>
+                <kbd>Y</kbd>
+              </MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+          <MenubarTrigger>View</MenubarTrigger>
+          <MenubarContent>
+            <MenubarRadioGroup value={notesMode || "normal"} onValueChange={(v) => setNotesMode(v as Note)}>
+              <MenubarRadioItem value={"normal"}>
+                Normal
+                <MenubarShortcut>
+                  <kbd>N</kbd>
+                </MenubarShortcut>
+              </MenubarRadioItem>
+              <MenubarRadioItem value="center">
+                Center Notes
+                <MenubarShortcut>
+                  <kbd>C</kbd>
+                </MenubarShortcut>
+              </MenubarRadioItem>
+              <MenubarRadioItem value="corner">
+                Corner Notes
+                <MenubarShortcut>
+                  <kbd>X</kbd>
+                </MenubarShortcut>
+              </MenubarRadioItem>
+              <MenubarRadioItem value="color">
+                Color Annotations
+                <MenubarShortcut>
+                  <kbd>V</kbd>
+                </MenubarShortcut>
+              </MenubarRadioItem>
+            </MenubarRadioGroup>
+            <MenubarSeparator />
+            <MenubarCheckboxItem checked={isDark} onCheckedChange={(v) => setIsDark(v)}>
+              Dark Mode
+            </MenubarCheckboxItem>
+          </MenubarContent>
+        </MenubarMenu>
+      </Menubar>
       <SudokuGrid
         ref={gridRef}
         presetGrid={sudokuGrid}
@@ -456,14 +569,6 @@ export default function Home() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        {/* Dark mode toggle */}
-        <div className="ml-2 flex items-center gap-2">
-          <Label htmlFor="dark-switch" className="text-xs">
-            Dark
-          </Label>
-          <Switch id="dark-switch" checked={isDark} onCheckedChange={(v) => setIsDark(v)} />
-        </div>
       </div>
     </div>
   );
