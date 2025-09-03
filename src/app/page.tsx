@@ -114,7 +114,7 @@ export default function Home() {
         const color = COLOR_ORDER[index]!;
         gridRef.current?.annotateColor(color);
       } else {
-        // 10th button in color mode = clear all stripes
+        // 10th button in color mode = clear all colors
         gridRef.current?.annotateClear();
       }
       return;
@@ -498,25 +498,31 @@ export default function Home() {
           <Toggle
             variant="outline"
             aria-label="Toggle Center Notes Mode"
+            title="Center Notes Mode (X)"
             pressed={notesMode === "center"}
             onPressedChange={(value) => setNotesMode(value ? "center" : null)}
           >
+            <span className="sr-only">Center Notes</span>
             <Pencil />
           </Toggle>
           <Toggle
             variant="outline"
             aria-label="Toggle Corner Notes Mode"
+            title="Corner Notes Mode (C)"
             pressed={notesMode === "corner"}
             onPressedChange={(value) => setNotesMode(value ? "corner" : null)}
           >
+            <span className="sr-only">Corner Notes</span>
             <Binary />
           </Toggle>
           <Toggle
             variant="outline"
             aria-label="Toggle Color Annotation Mode"
+            title="Color Annotation Mode (V)"
             pressed={notesMode === "color"}
             onPressedChange={(value) => setNotesMode(value ? "color" : null)}
           >
+            <span className="sr-only">Color Annotations</span>
             <Paintbrush />
           </Toggle>
         </div>
@@ -539,8 +545,8 @@ export default function Home() {
 
             const title = isColorMode
               ? isClearButtonInColor
-                ? "Clear all stripes"
-                : `Toggle ${COLOR_ORDER[idx]} stripe`
+                ? "Clear all colors"
+                : `Toggle ${COLOR_ORDER[idx]} color`
               : isCenterMode || isCornerMode
                 ? DIGITS[idx] === 0
                   ? "Clear notes"
@@ -550,7 +556,13 @@ export default function Home() {
                   : `Place ${DIGITS[idx]}`;
 
             const content = (() => {
-              if (DIGITS[idx] === 0) return <Eraser />;
+              if (DIGITS[idx] === 0)
+                return (
+                  <>
+                    <span className="sr-only">Clear</span>
+                    <Eraser />
+                  </>
+                );
               if (isColorMode) {
                 const color = COLOR_ORDER[idx]!;
                 return (
