@@ -22,6 +22,7 @@ import {
   Menubar,
   MenubarCheckboxItem,
   MenubarContent,
+  MenubarGroup,
   MenubarItem,
   MenubarMenu,
   MenubarRadioGroup,
@@ -320,33 +321,41 @@ export default function Home() {
     const onKey = (e: KeyboardEvent) => {
       const editable = isEditableTarget(e.target);
       // Global ctrl/cmd shortcuts
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        // Avoid interfering with text inputs
-        if (editable) return;
-        if (e.key === "s" || e.key === "S") {
-          e.preventDefault();
-          onMenuSaveFile();
-          return;
-        }
-        if (e.key === "o" || e.key === "O") {
-          e.preventDefault();
-          onMenuOpenFile();
-          return;
-        }
-        if (e.key === "r" || e.key === "R") {
-          e.preventDefault();
-          onMenuReset();
-          return;
-        }
-        if (e.key === "z" || e.key === "Z") {
-          e.preventDefault();
-          onMenuUndo();
-          return;
-        }
-        if (e.key === "y" || e.key === "Y") {
-          e.preventDefault();
-          onMenuRedo();
-          return;
+      if (e.ctrlKey || e.metaKey) {
+        if (!e.shiftKey && !e.altKey) {
+          // Avoid interfering with text inputs
+          if (editable) return;
+          if (e.key === "o" || e.key === "O") {
+            e.preventDefault();
+            setUploadOpen(true);
+            return;
+          }
+          if (e.key === "r" || e.key === "R") {
+            e.preventDefault();
+            onMenuReset();
+            return;
+          }
+          if (e.key === "z" || e.key === "Z") {
+            e.preventDefault();
+            onMenuUndo();
+            return;
+          }
+          if (e.key === "y" || e.key === "Y") {
+            e.preventDefault();
+            onMenuRedo();
+            return;
+          }
+        } else if (e.shiftKey && !e.altKey) {
+          if (e.key === "s" || e.key === "S") {
+            e.preventDefault();
+            onMenuSaveFile();
+            return;
+          }
+          if (e.key === "o" || e.key === "O") {
+            e.preventDefault();
+            onMenuOpenFile();
+            return;
+          }
         }
       }
 
@@ -382,39 +391,78 @@ export default function Home() {
     } catch {}
   }, [isDark]);
 
+  const [expertMode, setExpertMode] = useState(false);
+
   return (
     <div className="space-y-4 p-4">
       <Menubar className="w-fit">
         <MenubarMenu>
           <MenubarTrigger>File</MenubarTrigger>
           <MenubarContent>
-            <MenubarSub>
-              <MenubarSubTrigger onClick={handleShare}>Save</MenubarSubTrigger>
-              <MenubarSubContent>
-                <MenubarItem onClick={onMenuSaveFile}>
-                  Save file
+            {expertMode ? (
+              <>
+                <MenubarSub>
+                  <MenubarSubTrigger>Save...</MenubarSubTrigger>
+                  <MenubarSubContent>
+                    <MenubarItem onClick={handleShare}>
+                      Show saving dialog
+                      <MenubarShortcut>
+                        <kbd>Ctrl</kbd>
+                        <kbd>S</kbd>
+                      </MenubarShortcut>
+                    </MenubarItem>
+                    <MenubarItem onClick={onMenuSaveFile}>
+                      Save file
+                      <MenubarShortcut>
+                        <kbd>Ctrl</kbd>
+                        <kbd>Shift</kbd>
+                        <kbd>S</kbd>
+                      </MenubarShortcut>
+                    </MenubarItem>
+                    <MenubarItem onClick={onMenuShareLink}>Share link</MenubarItem>
+                    {expertMode && <MenubarItem onClick={onMenuCopyPayload}>Copy SG1 payload</MenubarItem>}
+                  </MenubarSubContent>
+                </MenubarSub>
+                <MenubarSub>
+                  <MenubarSubTrigger>Open...</MenubarSubTrigger>
+                  <MenubarSubContent>
+                    <MenubarItem onClick={() => setUploadOpen(true)}>
+                      Show opening dialog
+                      <MenubarShortcut>
+                        <kbd>Ctrl</kbd>
+                        <kbd>O</kbd>
+                      </MenubarShortcut>
+                    </MenubarItem>
+                    <MenubarItem onClick={onMenuOpenFile}>
+                      Open file
+                      <MenubarShortcut>
+                        <kbd>Ctrl</kbd>
+                        <kbd>Shift</kbd>
+                        <kbd>O</kbd>
+                      </MenubarShortcut>
+                    </MenubarItem>
+                    <MenubarItem onClick={onMenuPastePayload}>Paste SG1 payload</MenubarItem>
+                  </MenubarSubContent>
+                </MenubarSub>
+              </>
+            ) : (
+              <>
+                <MenubarItem onClick={handleShare}>
+                  Save
                   <MenubarShortcut>
                     <kbd>Ctrl</kbd>
                     <kbd>S</kbd>
                   </MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem onClick={onMenuShareLink}>Share Link</MenubarItem>
-                <MenubarItem onClick={onMenuCopyPayload}>Copy SG1 payload</MenubarItem>
-              </MenubarSubContent>
-            </MenubarSub>
-            <MenubarSub>
-              <MenubarSubTrigger onClick={() => setUploadOpen(true)}>Open</MenubarSubTrigger>
-              <MenubarSubContent>
-                <MenubarItem onClick={onMenuOpenFile}>
-                  Open file
+                <MenubarItem onClick={() => setUploadOpen(true)}>
+                  Open
                   <MenubarShortcut>
                     <kbd>Ctrl</kbd>
                     <kbd>O</kbd>
                   </MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem onClick={onMenuPastePayload}>Paste SG1 payload</MenubarItem>
-              </MenubarSubContent>
-            </MenubarSub>
+              </>
+            )}
             <MenubarSeparator />
             <MenubarItem onClick={onMenuReset}>
               Reset current puzzle
@@ -428,20 +476,26 @@ export default function Home() {
         <MenubarMenu>
           <MenubarTrigger>Edit</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem onClick={onMenuUndo}>
+            <MenubarItem inset onClick={onMenuUndo}>
               Undo
               <MenubarShortcut>
                 <kbd>Ctrl</kbd>
                 <kbd>Z</kbd>
               </MenubarShortcut>
             </MenubarItem>
-            <MenubarItem onClick={onMenuRedo}>
+            <MenubarItem inset onClick={onMenuRedo}>
               Redo
               <MenubarShortcut>
                 <kbd>Ctrl</kbd>
                 <kbd>Y</kbd>
               </MenubarShortcut>
             </MenubarItem>
+            {expertMode && (
+              <>
+                <MenubarSeparator />
+                <MenubarCheckboxItem disabled>Editorial Mode</MenubarCheckboxItem>
+              </>
+            )}
           </MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
@@ -476,6 +530,10 @@ export default function Home() {
             <MenubarSeparator />
             <MenubarCheckboxItem checked={isDark} onCheckedChange={(v) => setIsDark(v)}>
               Dark Mode
+            </MenubarCheckboxItem>
+            <MenubarSeparator />
+            <MenubarCheckboxItem checked={expertMode} onCheckedChange={(v) => setExpertMode(v)}>
+              Expert Mode
             </MenubarCheckboxItem>
           </MenubarContent>
         </MenubarMenu>
@@ -636,8 +694,8 @@ export default function Home() {
             )}
 
             <div className="flex items-center gap-2">
-              <Button variant="ghost" onClick={handleDialogFileClick} type="button">
-                <FileUp className="mr-2" /> Choose file
+              <Button variant="outline" className="w-full" onClick={handleDialogFileClick} type="button">
+                <FileUp size={12} /> Choose file
               </Button>
               <input
                 ref={uploadFileRef}
