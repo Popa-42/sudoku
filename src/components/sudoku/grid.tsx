@@ -210,6 +210,43 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])),
   );
 
+  // --- History management ---
+  const historyRef = useRef<string[]>([]);
+  const histIndexRef = useRef<number>(-1);
+  const suppressHistoryRef = useRef<number>(0);
+  const MAX_HISTORY = 200;
+
+  const makeSnapshot = useCallback(() => {
+    const sizeStr = toBase36(size);
+    const preset = encodeNumberGrid(presetGrid ?? createNumberGrid(size), size);
+    const user = encodeNumberGrid(userGrid, size);
+    const cCenter = encodeCubeMask(pencils, size);
+    const cCorner = encodeCubeMask(cornerPencils, size);
+    const colors = encodeColors(colorGrid, size);
+    const centerSeg = toBase36(cCenter.width) + cCenter.data;
+    const cornerSeg = toBase36(cCorner.width) + cCorner.data;
+    return [HEADER.slice(0, -1), sizeStr, preset, user, centerSeg, cornerSeg, colors, ""].join("|");
+  }, [size, presetGrid, userGrid, pencils, cornerPencils, colorGrid]);
+
+  const pushHistory = useCallback((snap: string) => {
+    if (suppressHistoryRef.current > 0) return;
+    const h = historyRef.current;
+    const idx = histIndexRef.current;
+    if (idx >= 0 && h[idx] === snap) return;
+    // drop redo tail
+    if (idx < h.length - 1) h.splice(idx + 1);
+    h.push(snap);
+    if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY);
+    histIndexRef.current = h.length - 1;
+  }, []);
+
+  // Push a snapshot whenever the user-modifiable grids change
+  useEffect(() => {
+    const snap = makeSnapshot();
+    pushHistory(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userGrid, pencils, cornerPencils, colorGrid]);
+
   useEffect(() => {
     setInternalSelection(emptySelection);
     setInternalCurrent(undefined);
@@ -218,6 +255,9 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     setPencils(createDigitCube(size));
     setCornerPencils(createDigitCube(size));
     setColorGrid(Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])));
+    // Reset history when size changes
+    historyRef.current = [];
+    histIndexRef.current = -1;
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
@@ -424,15 +464,74 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         const centerStr = parts[4];
         const cornerStr = parts[5];
         const colorsStr = parts[6];
-        // We do not set preset (it's a prop); we only restore user state
-        const nextUser = decodeNumberGrid(userStr, size);
-        const nextCenter = decodeCubeMask(centerStr, size);
-        const nextCorner = decodeCubeMask(cornerStr, size);
-        const nextColors = decodeColors(colorsStr, size);
-        setUserGrid(nextUser);
-        setPencils(nextCenter);
-        setCornerPencils(nextCorner);
-        setColorGrid(nextColors);
+
+        // Suppress history when importing state
+        suppressHistoryRef.current++;
+        setUserGrid(decodeNumberGrid(userStr, size));
+        setPencils(decodeCubeMask(centerStr, size));
+        setCornerPencils(decodeCubeMask(cornerStr, size));
+        setColorGrid(decodeColors(colorsStr, size));
+        setTimeout(() => {
+          suppressHistoryRef.current--;
+        }, 0);
+      },
+      // History and reset implementation
+      reset: () => {
+        setUserGrid(createNumberGrid(size));
+        setPencils(createDigitCube(size));
+        setCornerPencils(createDigitCube(size));
+        setColorGrid(Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])));
+      },
+      undo: () => {
+        const h = historyRef.current;
+        if (h.length === 0) return false;
+        const idx = histIndexRef.current;
+        if (idx <= 0) return false;
+        const snap = h[idx - 1];
+        suppressHistoryRef.current++;
+        try {
+          // Reuse importState logic but only for user state
+          const parts = snap.split("|");
+          const userStr = parts[3];
+          const centerStr = parts[4];
+          const cornerStr = parts[5];
+          const colorsStr = parts[6];
+          setUserGrid(decodeNumberGrid(userStr, size));
+          setPencils(decodeCubeMask(centerStr, size));
+          setCornerPencils(decodeCubeMask(cornerStr, size));
+          setColorGrid(decodeColors(colorsStr, size));
+          histIndexRef.current = idx - 1;
+        } finally {
+          setTimeout(() => {
+            suppressHistoryRef.current--;
+          }, 0);
+        }
+        return true;
+      },
+      redo: () => {
+        const h = historyRef.current;
+        if (h.length === 0) return false;
+        const idx = histIndexRef.current;
+        if (idx >= h.length - 1) return false;
+        const snap = h[idx + 1];
+        suppressHistoryRef.current++;
+        try {
+          const parts = snap.split("|");
+          const userStr = parts[3];
+          const centerStr = parts[4];
+          const cornerStr = parts[5];
+          const colorsStr = parts[6];
+          setUserGrid(decodeNumberGrid(userStr, size));
+          setPencils(decodeCubeMask(centerStr, size));
+          setCornerPencils(decodeCubeMask(cornerStr, size));
+          setColorGrid(decodeColors(colorsStr, size));
+          histIndexRef.current = idx + 1;
+        } finally {
+          setTimeout(() => {
+            suppressHistoryRef.current--;
+          }, 0);
+        }
+        return true;
       },
     }),
     [selection, current, isPreset, size, presetGrid, userGrid, pencils, cornerPencils, colorGrid],

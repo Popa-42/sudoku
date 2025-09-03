@@ -30,6 +30,10 @@ export type SudokuGridHandle = {
   // Compact state import/export (values, notes, colors). String format is versioned and self-contained.
   exportState: () => string;
   importState: (encoded: string) => void;
+  // History management
+  reset: () => void;
+  undo: () => boolean;
+  redo: () => boolean;
 };
 
 export { type RectBox, type Cell, type CellSelectInfo };

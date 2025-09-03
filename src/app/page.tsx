@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/menubar";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 
 type Note = "center" | "corner" | "color" | null;
 
@@ -171,6 +170,7 @@ export default function Home() {
   const [uploadText, setUploadText] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const uploadFileRef = useRef<HTMLInputElement | null>(null);
+  const uploadTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const handleDialogFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -239,6 +239,132 @@ export default function Home() {
     }
   };
 
+  // Helpers for Menubar actions
+  const getExportState = () => gridRef.current?.exportState() ?? "";
+
+  const downloadStringAsFile = (text: string, filename = "sudoku.sg1.txt") => {
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard?.writeText(text);
+      return true;
+    } catch (e) {
+      console.error(e);
+      alert("Failed to copy");
+      return false;
+    }
+  };
+
+  // Menubar item handlers
+  const onMenuSaveFile = () => {
+    const data = getExportState();
+    if (!data) return;
+    downloadStringAsFile(data);
+  };
+
+  const onMenuShareLink = async () => {
+    const data = getExportState();
+    if (!data) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("state", data);
+    await copyToClipboard(url.toString());
+    alert("Share link copied to clipboard");
+  };
+
+  const onMenuCopyPayload = async () => {
+    const data = getExportState();
+    if (!data) return;
+    await copyToClipboard(data);
+  };
+
+  const onMenuOpenFile = () => {
+    setUploadOpen(true);
+    // Open picker shortly after dialog mounts
+    setTimeout(() => uploadFileRef.current?.click(), 0);
+  };
+
+  const onMenuPastePayload = () => {
+    setUploadOpen(true);
+    setTimeout(() => uploadTextAreaRef.current?.focus(), 0);
+  };
+
+  const onMenuReset = () => {
+    gridRef.current?.reset();
+  };
+
+  const onMenuUndo = () => {
+    gridRef.current?.undo();
+  };
+
+  const onMenuRedo = () => {
+    gridRef.current?.redo();
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const isEditableTarget = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return el.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      const editable = isEditableTarget(e.target);
+      // Global ctrl/cmd shortcuts
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        // Avoid interfering with text inputs
+        if (editable) return;
+        if (e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          onMenuSaveFile();
+          return;
+        }
+        if (e.key === "o" || e.key === "O") {
+          e.preventDefault();
+          onMenuOpenFile();
+          return;
+        }
+        if (e.key === "r" || e.key === "R") {
+          e.preventDefault();
+          onMenuReset();
+          return;
+        }
+        if (e.key === "z" || e.key === "Z") {
+          e.preventDefault();
+          onMenuUndo();
+          return;
+        }
+        if (e.key === "y" || e.key === "Y") {
+          e.preventDefault();
+          onMenuRedo();
+          return;
+        }
+      }
+
+      // Mode quick toggles (when not typing and no dialog taking focus)
+      if (!editable && !uploadOpen && !exportOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === "n" || e.key === "N") setNotesMode(null);
+        if (e.key === "x" || e.key === "X") setNotesMode(notesMode === "center" ? null : "center");
+        if (e.key === "c" || e.key === "C") setNotesMode(notesMode === "corner" ? null : "corner");
+        if (e.key === "v" || e.key === "V") setNotesMode(notesMode === "color" ? null : "color");
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadOpen, exportOpen, notesMode]);
+
   // Dark mode state
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
@@ -264,34 +390,34 @@ export default function Home() {
           <MenubarTrigger>File</MenubarTrigger>
           <MenubarContent>
             <MenubarSub>
-              <MenubarSubTrigger>Save</MenubarSubTrigger>
+              <MenubarSubTrigger onClick={handleShare}>Save</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>
+                <MenubarItem onClick={onMenuSaveFile}>
                   Save file
                   <MenubarShortcut>
                     <kbd>Ctrl</kbd>
                     <kbd>S</kbd>
                   </MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem>Share Link</MenubarItem>
-                <MenubarItem>Copy SG1 payload</MenubarItem>
+                <MenubarItem onClick={onMenuShareLink}>Share Link</MenubarItem>
+                <MenubarItem onClick={onMenuCopyPayload}>Copy SG1 payload</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSub>
-              <MenubarSubTrigger>Open</MenubarSubTrigger>
+              <MenubarSubTrigger onClick={() => setUploadOpen(true)}>Open</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>
+                <MenubarItem onClick={onMenuOpenFile}>
                   Open file
                   <MenubarShortcut>
                     <kbd>Ctrl</kbd>
                     <kbd>O</kbd>
                   </MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem>Paste SG1 payload</MenubarItem>
+                <MenubarItem onClick={onMenuPastePayload}>Paste SG1 payload</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />
-            <MenubarItem>
+            <MenubarItem onClick={onMenuReset}>
               Reset current puzzle
               <MenubarShortcut>
                 <kbd>Ctrl</kbd>
@@ -303,14 +429,14 @@ export default function Home() {
         <MenubarMenu>
           <MenubarTrigger>Edit</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>
+            <MenubarItem onClick={onMenuUndo}>
               Undo
               <MenubarShortcut>
                 <kbd>Ctrl</kbd>
                 <kbd>Z</kbd>
               </MenubarShortcut>
             </MenubarItem>
-            <MenubarItem>
+            <MenubarItem onClick={onMenuRedo}>
               Redo
               <MenubarShortcut>
                 <kbd>Ctrl</kbd>
@@ -332,13 +458,13 @@ export default function Home() {
               <MenubarRadioItem value="center">
                 Center Notes
                 <MenubarShortcut>
-                  <kbd>C</kbd>
+                  <kbd>X</kbd>
                 </MenubarShortcut>
               </MenubarRadioItem>
               <MenubarRadioItem value="corner">
                 Corner Notes
                 <MenubarShortcut>
-                  <kbd>X</kbd>
+                  <kbd>C</kbd>
                 </MenubarShortcut>
               </MenubarRadioItem>
               <MenubarRadioItem value="color">
@@ -477,99 +603,83 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="flex w-fit items-center gap-1 rounded-md border p-2">
-        <Button
-          size="icon"
-          variant="outline"
-          aria-label="Share / export grid"
-          title="Share / export grid"
-          onClick={handleShare}
-        >
-          <Save />
-        </Button>
+      {/* Upload dialog */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload sudoku state</DialogTitle>
+            <DialogDescription>Paste your SG1 payload or choose a file from your device.</DialogDescription>
+          </DialogHeader>
 
-        {/* Upload dialog */}
-        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-          <DialogTrigger asChild>
-            <Button size="icon" variant="outline" aria-label="Upload" title="Upload">
-              <FolderOpen />
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Upload sudoku state</DialogTitle>
-              <DialogDescription>Paste your SG1 payload or choose a file from your device.</DialogDescription>
-            </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="sg1">Sudoku state</Label>
+            <Textarea
+              id="sg1"
+              placeholder="SG1|..."
+              value={uploadText}
+              onChange={(e) => setUploadText(e.target.value)}
+              aria-invalid={uploadError ? true : undefined}
+              spellCheck={false}
+              ref={uploadTextAreaRef}
+            />
+            {uploadError ? (
+              <p className="text-sm text-destructive">{uploadError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tip: payload should start with SG1|</p>
+            )}
 
-            <div className="grid gap-2">
-              <Label htmlFor="sg1">Sudoku state</Label>
-              <Textarea
-                id="sg1"
-                placeholder="SG1|..."
-                value={uploadText}
-                onChange={(e) => setUploadText(e.target.value)}
-                aria-invalid={uploadError ? true : undefined}
-                spellCheck={false}
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={handleDialogFileClick} type="button">
+                <FileUp className="mr-2" /> Choose file
+              </Button>
+              <input
+                ref={uploadFileRef}
+                type="file"
+                accept=".txt,.sg1"
+                className="hidden"
+                onChange={handleDialogFilePick}
               />
-              {uploadError ? (
-                <p className="text-sm text-destructive">{uploadError}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">Tip: payload should start with SG1|</p>
-              )}
-
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={handleDialogFileClick} type="button">
-                  <FileUp className="mr-2" /> Choose file
-                </Button>
-                <input
-                  ref={uploadFileRef}
-                  type="file"
-                  accept=".txt,.sg1"
-                  className="hidden"
-                  onChange={handleDialogFilePick}
-                />
-              </div>
             </div>
+          </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setUploadOpen(false)} type="button">
-                Cancel
-              </Button>
-              <Button onClick={handleDialogSend} type="button">
-                Send
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUploadOpen(false)} type="button">
+              Cancel
+            </Button>
+            <Button onClick={handleDialogSend} type="button">
+              Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* Export dialog */}
-        <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-          {/* Share button already opens dialog via handleShare */}
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Export sudoku state</DialogTitle>
-              <DialogDescription>Copy or download your SG1 payload.</DialogDescription>
-            </DialogHeader>
+      {/* Export dialog */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        {/* Share button already opens dialog via handleShare */}
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export sudoku state</DialogTitle>
+            <DialogDescription>Copy or download your SG1 payload.</DialogDescription>
+          </DialogHeader>
 
-            <div className="grid gap-2">
-              <Label htmlFor="sg1-out">Sudoku state</Label>
-              <Textarea id="sg1-out" value={exportText} readOnly spellCheck={false} />
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="sg1-out">Sudoku state</Label>
+            <Textarea id="sg1-out" value={exportText} readOnly spellCheck={false} />
+          </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setExportOpen(false)} type="button">
-                Close
-              </Button>
-              <Button variant="secondary" onClick={handleExportCopy} type="button">
-                Copy
-              </Button>
-              <Button onClick={handleExportDownload} type="button">
-                Download
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportOpen(false)} type="button">
+              Close
+            </Button>
+            <Button variant="secondary" onClick={handleExportCopy} type="button">
+              Copy
+            </Button>
+            <Button onClick={handleExportDownload} type="button">
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
