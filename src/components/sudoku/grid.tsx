@@ -26,8 +26,6 @@ import { createDigitCube, createNumberGrid, selectionTargets } from "@/component
 type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   size?: number;
   presetGrid?: number[][];
-  editedGrid?: number[][]; // kept for compatibility (unused)
-  pencilGrid?: number[][][]; // kept for compatibility (unused)
   pencilMode?: "center" | "corner" | "color" | null;
   currentCell?: Cell;
   selectedCells?: boolean[][];
@@ -49,8 +47,6 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     size = 9,
     className,
     presetGrid,
-    editedGrid, // kept for compatibility
-    pencilGrid, // kept for compatibility
     pencilMode = null,
     currentCell,
     selectedCells,
