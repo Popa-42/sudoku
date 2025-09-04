@@ -1,10 +1,10 @@
 // /src/types.ts
 import React from "react";
 
-type RectBox = { rows: number; cols: number };
-type Cell = [number, number];
+export type RectBox = { rows: number; cols: number };
+export type Cell = [number, number];
 
-type CellSelectInfo = {
+export type CellSelectInfo = {
   row: number;
   col: number;
   current: Cell;
@@ -30,6 +30,12 @@ export type SudokuGridHandle = {
   // Compact state import/export (values, notes, colors). String format is versioned and self-contained.
   exportState: () => string;
   importState: (encoded: string) => void;
+  // History management
+  reset: () => void;
+  undo: () => boolean;
+  redo: () => boolean;
+  // Validation
+  isValid: () => boolean;
 };
 
-export { type RectBox, type Cell, type CellSelectInfo };
+export type Note = "center" | "corner" | "color" | null;

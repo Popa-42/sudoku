@@ -1,6 +1,8 @@
+// /src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
+import { from36, SG1, SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
 import {
   buildSingleSelection,
   computeDefaultBox,
@@ -17,11 +19,13 @@ import {
 import { Cell, CellSelectInfo, ColorName, RectBox, SudokuGridHandle } from "@/types";
 import { createDigitCube, createNumberGrid, selectionTargets } from "@/components/sudoku/utils/grids";
 
+/* =========================================================
+   Types
+   ========================================================= */
+
 type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   size?: number;
   presetGrid?: number[][];
-  editedGrid?: number[][];
-  pencilGrid?: number[][][];
   pencilMode?: "center" | "corner" | "color" | null;
   currentCell?: Cell;
   selectedCells?: boolean[][];
@@ -32,140 +36,18 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   regions?: number[][];
   cellClassName?: string;
   dividerClassName?: string;
+  editorialMode?: boolean; // when true, digits edit the preset instead of the user grid
 };
 
-// --- Compact export/import helpers (version: SG1) ---
-const HEADER = "SG1|" as const;
-const colorToCode: Record<ColorName, string> = {
-  red: "r",
-  orange: "o",
-  yellow: "y",
-  green: "g",
-  blue: "b",
-  cyan: "c",
-  violet: "v",
-  pink: "p",
-  transparent: "t",
-};
-const codeToColor: Record<string, ColorName> = Object.fromEntries(
-  Object.entries(colorToCode).map(([k, v]) => [v, k as ColorName]),
-) as Record<string, ColorName>;
+/* =========================================================
+   Component
+   ========================================================= */
 
-function toBase36(n: number): string {
-  return n.toString(36);
-}
-function fromBase36(s: string): number {
-  return parseInt(s, 36);
-}
-function encodeNumberGrid(grid: number[][], size: number): string {
-  const n = size * size;
-  const out: string[] = new Array(n);
-  let i = 0;
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const v = grid?.[r]?.[c] ?? 0;
-      if (v < 0 || v >= 36) throw new Error("Value out of encodable range (0..35)");
-      out[i++] = toBase36(v);
-    }
-  }
-  return out.join("");
-}
-function decodeNumberGrid(s: string, size: number): number[][] {
-  const n = size * size;
-  if (s.length !== n) throw new Error("Corrupt state: number grid length mismatch");
-  const grid = createNumberGrid(size);
-  for (let i = 0; i < n; i++) {
-    const r = Math.floor(i / size);
-    const c = i % size;
-    grid[r][c] = fromBase36(s[i]) || 0;
-  }
-  return grid;
-}
-function maskWidthForSize(size: number): number {
-  // width in base36 needed to store (1<<size)-1; safe for size <= 31
-  const maxMask = Math.max(0, Math.pow(2, size) - 1);
-  return Math.max(1, maxMask.toString(36).length);
-}
-function encodeCubeMask(cube: number[][][], size: number): { width: number; data: string } {
-  const n = size * size;
-  const width = maskWidthForSize(size);
-  const parts: string[] = new Array(n);
-  let idx = 0;
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      let mask = 0;
-      const cell = cube?.[r]?.[c];
-      if (cell) {
-        for (let d = 1; d <= size; d++) if (cell[d]) mask |= 1 << (d - 1);
-      }
-      parts[idx++] = mask.toString(36).padStart(width, "0");
-    }
-  }
-  return { width, data: parts.join("") };
-}
-function decodeCubeMask(payload: string, size: number): number[][][] {
-  if (!payload || payload.length < 1) throw new Error("Corrupt state: empty mask payload");
-  const width = fromBase36(payload[0]);
-  if (width < 1 || width > 10) throw new Error("Corrupt state: invalid mask width");
-  const body = payload.slice(1);
-  const expected = size * size * width;
-  if (body.length !== expected) throw new Error("Corrupt state: mask body length mismatch");
-  const cube = createDigitCube(size);
-  let i = 0;
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const chunk = body.slice(i, i + width);
-      i += width;
-      const mask = parseInt(chunk, 36) || 0;
-      for (let d = 1; d <= size; d++) cube[r][c][d] = (mask >> (d - 1)) & 1 ? 1 : 0;
-    }
-  }
-  return cube;
-}
-function encodeColors(grid: ColorName[][][], size: number): string {
-  let out = "";
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const list = grid?.[r]?.[c] ?? [];
-      const mapped = list.map((clr) => colorToCode[clr] ?? "").join("");
-      if (mapped.length >= 36) throw new Error("Too many color stripes in a cell (max 35)");
-      out += toBase36(mapped.length) + mapped;
-    }
-  }
-  return out;
-}
-function decodeColors(s: string, size: number): ColorName[][][] {
-  const grid: ColorName[][][] = Array.from({ length: size }, () =>
-    Array.from({ length: size }, () => [] as ColorName[]),
-  );
-  let i = 0;
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (i >= s.length) throw new Error("Corrupt state: truncated colors segment");
-      const len = fromBase36(s[i]);
-      i += 1;
-      const seg = s.slice(i, i + len);
-      i += len;
-      const list: ColorName[] = [];
-      for (let k = 0; k < seg.length; k++) {
-        const clr = codeToColor[seg[k]];
-        if (clr) list.push(clr);
-      }
-      grid[r][c] = list;
-    }
-  }
-  // Ignore any trailing characters up to next '|', parser will split segments appropriately
-  return grid;
-}
-
-/* ---------- Component ---------- */
 const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(function SudokuGrid(
   {
     size = 9,
     className,
     presetGrid,
-    editedGrid, // kept for API compatibility
-    pencilGrid, // kept for API compatibility
     pencilMode = null,
     currentCell,
     selectedCells,
@@ -176,6 +58,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     regions,
     cellClassName,
     dividerClassName = "border-foreground dark:border-muted",
+    editorialMode = false,
     ...props
   },
   ref,
@@ -183,6 +66,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   if (!Number.isInteger(size) || size <= 0) throw new Error("Size must be a positive integer.");
   validateRegions(regions, size);
 
+  /* ---------- selection / focus state ---------- */
   const emptySelection = useMemo(() => createEmptySelection(size), [size]);
 
   const [internalCurrent, setInternalCurrent] = useState<Cell | undefined>(undefined);
@@ -191,6 +75,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLTableSectionElement | null>(null);
+
   const draggingRef = useRef<boolean>(false);
   const dragRef = useRef<{
     mode: "rect" | "paint-add" | "paint-erase";
@@ -201,23 +86,63 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     last?: Cell;
   } | null>(null);
 
-  // user-entered values and notes (sized to "size", not hardcoded 9)
+  /* ---------- puzzle state ---------- */
+  const [preset, setPreset] = useState<number[][]>(() => presetGrid ?? createNumberGrid(size));
   const [userGrid, setUserGrid] = useState<number[][]>(() => createNumberGrid(size));
-  const [pencils, setPencils] = useState<number[][][]>(() => createDigitCube(size));
-  const [cornerPencils, setCornerPencils] = useState<number[][][]>(() => createDigitCube(size));
-  // color annotations grid: array of color stripes per cell
+  const [centerNotes, setCenterNotes] = useState<number[][][]>(() => createDigitCube(size));
+  const [cornerNotes, setCornerNotes] = useState<number[][][]>(() => createDigitCube(size));
   const [colorGrid, setColorGrid] = useState<ColorName[][][]>(() =>
     Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])),
   );
+
+  /* ---------- history ---------- */
+  const historyRef = useRef<string[]>([]);
+  const histIndexRef = useRef<number>(-1);
+  const suppressHistoryRef = useRef<number>(0);
+  const MAX_HISTORY = 200;
+
+  const snapshot = useCallback(() => {
+    return SG1.buildPayload({
+      size,
+      preset,
+      user: userGrid,
+      center: centerNotes,
+      corner: cornerNotes,
+      colors: colorGrid,
+    });
+  }, [size, preset, userGrid, centerNotes, cornerNotes, colorGrid]);
+
+  const pushHistory = useCallback((snap: string) => {
+    if (suppressHistoryRef.current > 0) return;
+    const h = historyRef.current;
+    const idx = histIndexRef.current;
+    if (idx >= 0 && h[idx] === snap) return;
+    if (idx < h.length - 1) h.splice(idx + 1);
+    h.push(snap);
+    if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY);
+    histIndexRef.current = h.length - 1;
+  }, []);
+
+  useEffect(() => {
+    pushHistory(snapshot());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, userGrid, centerNotes, cornerNotes, colorGrid]);
+
+  /* ---------- resets on size/preset change ---------- */
+  useEffect(() => {
+    setPreset(presetGrid ?? createNumberGrid(size));
+  }, [size, presetGrid]);
 
   useEffect(() => {
     setInternalSelection(emptySelection);
     setInternalCurrent(undefined);
     setSelectionStack([]);
     setUserGrid(createNumberGrid(size));
-    setPencils(createDigitCube(size));
-    setCornerPencils(createDigitCube(size));
+    setCenterNotes(createDigitCube(size));
+    setCornerNotes(createDigitCube(size));
     setColorGrid(Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])));
+    historyRef.current = [];
+    histIndexRef.current = -1;
   }, [size, emptySelection]);
 
   const activeBox = useMemo(() => box ?? computeDefaultBox(size), [box, size]);
@@ -237,7 +162,8 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   const current = currentCell ?? internalCurrent;
   const selection = normalizeSelection(selectedCells ?? internalSelection, size);
 
-  const isPreset = useCallback((r: number, c: number) => (presetGrid?.[r]?.[c] ?? 0) > 0, [presetGrid]);
+  const isPreset = useCallback((r: number, c: number) => (preset?.[r]?.[c] ?? 0) > 0, [preset]);
+  const isSelected = useCallback((r: number, c: number) => !!selection?.[r]?.[c], [selection]);
 
   useEffect(() => {
     if (!hasAnySelected(selection)) {
@@ -247,198 +173,298 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     }
   }, [selection, currentCell, onCurrentCellChange]);
 
-  const isSelected = useCallback((r: number, c: number) => !!selection?.[r]?.[c], [selection]);
-
-  const cellBorderClasses = useCallback(
-    (r: number, c: number) => {
-      const base: string[] = [
-        "size-10",
-        "border",
-        "border-foreground",
-        "dark:border-muted",
-        "text-center",
-        "select-none",
-        "cursor-pointer",
-      ];
-      if (cellClassName) base.push(cellClassName);
-
-      const thick: string[] = [];
-      if (regions) {
-        const id = getRegionId(r, c);
-        const topChange = r === 0 || getRegionId(r - 1, c) !== id;
-        const leftChange = c === 0 || getRegionId(r, c - 1) !== id;
-        const rightChange = c === size - 1 || getRegionId(r, c + 1) !== id;
-        const bottomChange = r === size - 1 || getRegionId(r + 1, c) !== id;
-
-        if (topChange) thick.push("border-t-2", dividerClassName);
-        if (leftChange) thick.push("border-l-2", dividerClassName);
-        if (rightChange) thick.push("border-r-2", dividerClassName);
-        if (bottomChange) thick.push("border-b-2", dividerClassName);
-      } else {
-        const topThick = r === 0 || r % activeBox.rows === 0;
-        const leftThick = c === 0 || c % activeBox.cols === 0;
-        const rightThick = c === size - 1 || (c + 1) % activeBox.cols === 0;
-        const bottomThick = r === size - 1 || (r + 1) % activeBox.rows === 0;
-
-        if (topThick) thick.push("border-t-2", dividerClassName);
-        if (leftThick) thick.push("border-l-2", dividerClassName);
-        if (rightThick) thick.push("border-r-2", dividerClassName);
-        if (bottomThick) thick.push("border-b-2", dividerClassName);
-      }
-
-      return cn(base.join(" "), thick.join(" "));
-    },
-    [regions, getRegionId, size, activeBox, dividerClassName, cellClassName],
-  );
+  /* =========================================================
+     Small helpers
+     ========================================================= */
 
   const applySelectionChange = useCallback(
-    (nextSelection: boolean[][]) => {
-      if (!selectedCells) setInternalSelection(nextSelection);
-      onSelectionChange?.(nextSelection);
+    (next: boolean[][]) => {
+      if (!selectedCells) setInternalSelection(next);
+      onSelectionChange?.(next);
     },
     [selectedCells, onSelectionChange],
   );
 
   const applyCurrentChange = useCallback(
-    (nextCurrent: Cell | undefined) => {
-      if (!currentCell) setInternalCurrent(nextCurrent);
-      onCurrentCellChange?.(nextCurrent);
+    (next: Cell | undefined) => {
+      if (!currentCell) setInternalCurrent(next);
+      onCurrentCellChange?.(next);
     },
     [currentCell, onCurrentCellChange],
   );
 
-  // Expose imperative color annotation API and new digit/note methods
+  const withTargets = useCallback(
+    (fn: (r: number, c: number) => void) => {
+      const targets = selectionTargets(selection, current);
+      if (!targets.length) return false;
+      for (const [r, c] of targets) fn(r, c);
+      return true;
+    },
+    [selection, current],
+  );
+
+  const setValueOnTargets = useCallback(
+    (value: number) => {
+      withTargets((r, c) => {
+        if (editorialMode) {
+          // Directly edit preset; keep puzzle clean by clearing user value and notes
+          setPreset((prev) => {
+            const next = prev.map((row) => row.slice());
+            next[r][c] = value > 0 ? value : 0;
+            return next;
+          });
+          setUserGrid((prev) => {
+            const next = prev.map((row) => row.slice());
+            next[r][c] = 0;
+            return next;
+          });
+          setCenterNotes((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice()));
+            next[r][c].fill(0);
+            return next;
+          });
+          setCornerNotes((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice()));
+            next[r][c].fill(0);
+            return next;
+          });
+          // Colors left untouched intentionally
+          return;
+        }
+        // Normal mode: edit user grid; skip preset cells
+        if (isPreset(r, c)) return;
+        setUserGrid((prev) => {
+          const next = prev.map((row) => row.slice());
+          next[r][c] = value > 0 ? value : 0;
+          return next;
+        });
+      });
+    },
+    [withTargets, isPreset, editorialMode],
+  );
+
+  const toggleDigitIn = useCallback(
+    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>, digit: number) => {
+      if (digit < 1 || digit > size) return;
+      withTargets((r, c) => {
+        if (isPreset(r, c)) return;
+        setCube((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          next[r][c][digit] = next[r][c][digit] ? 0 : 1;
+          return next;
+        });
+      });
+    },
+    [withTargets, isPreset, size],
+  );
+
+  const clearDigitsIn = useCallback(
+    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>) => {
+      withTargets((r, c) => {
+        if (isPreset(r, c)) return;
+        setCube((prev) => {
+          const next = prev.map((row) => row.map((cell) => cell.slice()));
+          next[r][c].fill(0);
+          return next;
+        });
+      });
+    },
+    [withTargets, isPreset],
+  );
+
+  const isValidSudoku = useCallback((): boolean => {
+    // Build effective grid where preset takes precedence over user input
+    const effectiveGrid: number[][] = Array.from({ length: size }, (_, r) =>
+      Array.from({ length: size }, (_, c) => {
+        const presetVal = preset?.[r]?.[c] ?? 0;
+        const userVal = userGrid?.[r]?.[c] ?? 0;
+        return presetVal > 0 ? presetVal : userVal;
+      }),
+    );
+
+    const hasDuplicates = (arr: number[]) => {
+      const seen = new Set<number>();
+      for (const v of arr) {
+        if (v === 0) return true; // zero is considered a duplicate (empty cell)
+        if (v > 0) {
+          if (seen.has(v)) return true;
+          seen.add(v);
+        }
+      }
+      return false;
+    };
+
+    // Check rows
+    for (let r = 0; r < size; r++) if (hasDuplicates(effectiveGrid[r])) return false;
+
+    // Check columns
+    for (let c = 0; c < size; c++) {
+      const col = Array.from({ length: size }, (_, r) => effectiveGrid[r][c]);
+      if (hasDuplicates(col)) return false;
+    }
+
+    // Check regions (using getRegionId)
+    const groups = new Map<number, number[]>();
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const id = getRegionId(r, c);
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id)!.push(effectiveGrid[r][c]);
+      }
+    }
+    for (const vals of groups.values()) if (hasDuplicates(vals)) return false;
+
+    return true;
+  }, [size, preset, userGrid, getRegionId]);
+
+  /* =========================================================
+     Imperative API
+     ========================================================= */
+
   useImperativeHandle(
     ref,
     (): SudokuGridHandle => ({
       annotateColor: (color: ColorName) => {
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setColorGrid((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice()));
-          for (const [r, c] of targets) {
+        withTargets((r, c) => {
+          setColorGrid((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice()));
             const list = next[r][c];
             const idx = list.indexOf(color);
             if (idx >= 0) list.splice(idx, 1);
             else list.push(color);
-          }
-          return next;
+            return next;
+          });
         });
       },
       annotateClear: () => {
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setColorGrid((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
-          for (const [r, c] of targets) {
+        withTargets((r, c) => {
+          setColorGrid((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
             next[r][c] = [];
-          }
-          return next;
+            return next;
+          });
         });
       },
-      setDigit: (value: number) => {
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setUserGrid((prev) => {
-          const next = prev.map((row) => row.slice());
-          for (const [r, c] of targets) {
-            if (isPreset(r, c)) continue;
-            next[r][c] = value > 0 ? value : 0;
-          }
-          return next;
-        });
-      },
-      toggleCenterNote: (digit: number) => {
-        if (digit < 1 || digit > size) return;
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setPencils((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice()));
-          for (const [r, c] of targets) {
-            if (isPreset(r, c)) continue;
-            next[r][c][digit] = next[r][c][digit] ? 0 : 1;
-          }
-          return next;
-        });
-      },
-      toggleCornerNote: (digit: number) => {
-        if (digit < 1 || digit > size) return;
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setCornerPencils((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice()));
-          for (const [r, c] of targets) {
-            if (isPreset(r, c)) continue;
-            next[r][c][digit] = next[r][c][digit] ? 0 : 1;
-          }
-          return next;
-        });
-      },
-      clearCenterNotes: () => {
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setPencils((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice()));
-          for (const [r, c] of targets) {
-            if (isPreset(r, c)) continue;
-            next[r][c].fill(0);
-          }
-          return next;
-        });
-      },
-      clearCornerNotes: () => {
-        const targets = selectionTargets(selection, current);
-        if (!targets.length) return;
-        setCornerPencils((prev) => {
-          const next = prev.map((row) => row.map((cell) => cell.slice()));
-          for (const [r, c] of targets) {
-            if (isPreset(r, c)) continue;
-            next[r][c].fill(0);
-          }
-          return next;
-        });
-      },
-      exportState: () => {
-        // Header + size
-        const sizeStr = toBase36(size);
-        const preset = encodeNumberGrid(presetGrid ?? createNumberGrid(size), size);
-        const user = encodeNumberGrid(userGrid, size);
-        const cCenter = encodeCubeMask(pencils, size);
-        const cCorner = encodeCubeMask(cornerPencils, size);
-        const colors = encodeColors(colorGrid, size);
-        // center and corner include their widths as a leading base36 char
-        const centerSeg = toBase36(cCenter.width) + cCenter.data;
-        const cornerSeg = toBase36(cCorner.width) + cCorner.data;
-        return [HEADER.slice(0, -1), sizeStr, preset, user, centerSeg, cornerSeg, colors, ""].join("|");
-      },
+      setDigit: (value: number) => setValueOnTargets(value),
+      toggleCenterNote: (d: number) => toggleDigitIn(setCenterNotes, d),
+      toggleCornerNote: (d: number) => toggleDigitIn(setCornerNotes, d),
+      clearCenterNotes: () => clearDigitsIn(setCenterNotes),
+      clearCornerNotes: () => clearDigitsIn(setCornerNotes),
+      exportState: () =>
+        SG1.buildPayload({
+          size,
+          preset,
+          user: userGrid,
+          center: centerNotes,
+          corner: cornerNotes,
+          colors: colorGrid,
+        }),
       importState: (encoded: string) => {
-        if (!encoded || !encoded.startsWith(HEADER)) throw new Error("Invalid state payload");
-        // SG1|<size>|<preset>|<user>|<center>|<corner>|<colors>|
+        if (!encoded || !encoded.startsWith(SG1_HEADER)) throw new Error("Invalid state payload");
         const parts = encoded.split("|");
-        // parts: [ 'SG1', size, preset, user, center, corner, colors, ... ]
         if (parts.length < 7) throw new Error("Corrupt state: missing segments");
-        const sizeStr = parts[1];
-        const parsedSize = fromBase36(sizeStr);
+
+        const parsedSize = from36(parts[1]);
         if (parsedSize !== size) throw new Error(`State size ${parsedSize} does not match grid size ${size}`);
-        const userStr = parts[3];
-        const centerStr = parts[4];
-        const cornerStr = parts[5];
-        const colorsStr = parts[6];
-        // We do not set preset (it's a prop); we only restore user state
-        const nextUser = decodeNumberGrid(userStr, size);
-        const nextCenter = decodeCubeMask(centerStr, size);
-        const nextCorner = decodeCubeMask(cornerStr, size);
-        const nextColors = decodeColors(colorsStr, size);
-        setUserGrid(nextUser);
-        setPencils(nextCenter);
-        setCornerPencils(nextCorner);
-        setColorGrid(nextColors);
+
+        suppressHistoryRef.current++;
+        try {
+          const nextPreset = SG1.decodeNumGrid(parts[2], size);
+          const nextUser = SG1.decodeNumGrid(parts[3], size);
+          const nextCenter = SG1.decodeDigitCube(parts[4], size);
+          const nextCorner = SG1.decodeDigitCube(parts[5], size);
+          const nextColors = SG1.decodeColors(parts[6], size);
+
+          // preset wins over user/notes
+          for (let r = 0; r < size; r++) {
+            for (let c = 0; c < size; c++) {
+              if ((nextPreset?.[r]?.[c] ?? 0) > 0) {
+                nextUser[r][c] = 0;
+                nextCenter[r][c].fill(0);
+                nextCorner[r][c].fill(0);
+              }
+            }
+          }
+
+          setPreset(nextPreset);
+          setUserGrid(nextUser);
+          setCenterNotes(nextCenter);
+          setCornerNotes(nextCorner);
+          setColorGrid(nextColors);
+        } finally {
+          setTimeout(() => suppressHistoryRef.current--, 0);
+        }
       },
+      reset: () => {
+        setUserGrid(createNumberGrid(size));
+        setCenterNotes(createDigitCube(size));
+        setCornerNotes(createDigitCube(size));
+        setColorGrid(Array.from({ length: size }, () => Array.from({ length: size }, () => [] as ColorName[])));
+      },
+      undo: () => {
+        const h = historyRef.current;
+        if (!h.length) return false;
+        const idx = histIndexRef.current;
+        if (idx <= 0) return false;
+        const snap = h[idx - 1];
+        suppressHistoryRef.current++;
+        try {
+          const parts = snap.split("|");
+          setPreset(SG1.decodeNumGrid(parts[2], size));
+          setUserGrid(SG1.decodeNumGrid(parts[3], size));
+          setCenterNotes(SG1.decodeDigitCube(parts[4], size));
+          setCornerNotes(SG1.decodeDigitCube(parts[5], size));
+          setColorGrid(SG1.decodeColors(parts[6], size));
+          histIndexRef.current = idx - 1;
+        } finally {
+          setTimeout(() => suppressHistoryRef.current--, 0);
+        }
+        return true;
+      },
+      redo: () => {
+        const h = historyRef.current;
+        if (!h.length) return false;
+        const idx = histIndexRef.current;
+        if (idx >= h.length - 1) return false;
+        const snap = h[idx + 1];
+        suppressHistoryRef.current++;
+        try {
+          const parts = snap.split("|");
+          setPreset(SG1.decodeNumGrid(parts[2], size));
+          setUserGrid(SG1.decodeNumGrid(parts[3], size));
+          setCenterNotes(SG1.decodeDigitCube(parts[4], size));
+          setCornerNotes(SG1.decodeDigitCube(parts[5], size));
+          setColorGrid(SG1.decodeColors(parts[6], size));
+          histIndexRef.current = idx + 1;
+        } finally {
+          setTimeout(() => suppressHistoryRef.current--, 0);
+        }
+        return true;
+      },
+      isValid: () => isValidSudoku(),
     }),
-    [selection, current, isPreset, size, presetGrid, userGrid, pencils, cornerPencils, colorGrid],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      selection,
+      current,
+      isPreset,
+      size,
+      preset,
+      userGrid,
+      centerNotes,
+      cornerNotes,
+      colorGrid,
+      withTargets,
+      setValueOnTargets,
+      toggleDigitIn,
+      clearDigitsIn,
+    ],
   );
 
-  // pointer -> cell mapping
+  /* =========================================================
+     Pointer -> cell mapping + selection gestures
+     ========================================================= */
+
   const clampIndex = useCallback((v: number, max: number) => Math.max(0, Math.min(max - 1, v)), []);
   const getCellFromPointer = useCallback(
     (e: React.PointerEvent | PointerEvent): Cell | undefined => {
@@ -455,7 +481,6 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     [size, clampIndex],
   );
 
-  // pointer selection
   const onPointerDownGrid = useCallback(
     (e: React.PointerEvent<HTMLTableSectionElement>) => {
       const cell = getCellFromPointer(e);
@@ -463,17 +488,17 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       wrapperRef.current?.focus();
       const [r, c] = cell;
 
-      const isCtrl = e.ctrlKey || e.metaKey;
-      const isShift = e.shiftKey;
+      const ctrl = e.ctrlKey || e.metaKey;
+      const shift = e.shiftKey;
 
-      const base = isCtrl ? selection.map((row) => row.slice()) : createEmptySelection(size);
+      const base = ctrl ? selection.map((row) => row.slice()) : createEmptySelection(size);
       let working = base.map((row) => row.slice());
 
-      const mode: "rect" | "paint-add" | "paint-erase" = isCtrl
+      const mode: "rect" | "paint-add" | "paint-erase" = ctrl
         ? base[r][c]
           ? "paint-erase"
           : "paint-add"
-        : isShift
+        : shift
           ? "rect"
           : "paint-add";
 
@@ -496,7 +521,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       } else if (mode === "paint-add") {
         working[r][c] = true;
         info.working = working;
-        setSelectionStack(isCtrl ? (prev) => pushIfAbsent([...prev], [r, c]) : [[r, c]]);
+        setSelectionStack(ctrl ? (prev) => pushIfAbsent([...prev], [r, c]) : [[r, c]]);
         applySelectionChange(working.map((row) => row.slice()));
         applyCurrentChange([r, c]);
       } else {
@@ -592,63 +617,15 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     finishDrag();
   }, [finishDrag]);
 
-  // value / pencil operations
-  const applyValueToSelection = useCallback(
-    (value: number) => {
-      const targets = selectionTargets(selection, current);
-      if (targets.length === 0) return;
-      setUserGrid((prev) => {
-        const next = prev.map((row) => row.slice());
-        for (const [r, c] of targets) {
-          if (isPreset(r, c)) continue;
-          next[r][c] = value > 0 ? value : 0;
-        }
-        return next;
-      });
-    },
-    [selection, current, isPreset],
-  );
+  /* =========================================================
+     Keyboard
+     ========================================================= */
 
-  const toggleDigitInCube = useCallback(
-    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>, digit: number) => {
-      if (digit < 1 || digit > size) return;
-      const targets = selectionTargets(selection, current);
-      if (!targets.length) return;
-      setCube((prev) => {
-        const next = prev.map((row) => row.map((cell) => cell.slice()));
-        for (const [r, c] of targets) {
-          if (isPreset(r, c)) continue;
-          next[r][c][digit] = next[r][c][digit] ? 0 : 1;
-        }
-        return next;
-      });
-    },
-    [selection, current, isPreset, size],
-  );
-
-  const clearCubeDigits = useCallback(
-    (setCube: React.Dispatch<React.SetStateAction<number[][][]>>) => {
-      const targets = selectionTargets(selection, current);
-      if (!targets.length) return;
-      setCube((prev) => {
-        const next = prev.map((row) => row.map((cell) => cell.slice()));
-        for (const [r, c] of targets) {
-          if (isPreset(r, c)) continue;
-          next[r][c].fill(0);
-        }
-        return next;
-      });
-    },
-    [selection, current, isPreset],
-  );
-
-  // keyboard
   const moveCurrent = useCallback(
     (dr: number, dc: number) => {
       let base: Cell | undefined = current;
       if (!base) {
-        if (hasAnySelected(selection)) base = stackFromMatrix(selection)[0];
-        else base = [0, 0];
+        base = hasAnySelected(selection) ? stackFromMatrix(selection)[0] : [0, 0];
       }
       const n = neighbor({ row: base![0], col: base![1] }, dr, dc, size);
       const next: Cell = [n.row, n.col];
@@ -682,20 +659,20 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
       if (key === "Backspace" || key === "Delete" || key === "0") {
         e.preventDefault();
-        if (pencilMode === "center") clearCubeDigits(setPencils);
-        else if (pencilMode === "corner") clearCubeDigits(setCornerPencils);
-        else applyValueToSelection(0);
+        if (pencilMode === "center") clearDigitsIn(setCenterNotes);
+        else if (pencilMode === "corner") clearDigitsIn(setCornerNotes);
+        else setValueOnTargets(0);
         return;
       }
 
-      // digits 1..9 only (kept to avoid layout issues for sizes > 9)
+      // 1..9 only (stable UI for size > 9)
       if (/^[1-9]$/.test(key)) {
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
-          if (pencilMode === "center") toggleDigitInCube(setPencils, val);
-          else if (pencilMode === "corner") toggleDigitInCube(setCornerPencils, val);
-          else applyValueToSelection(val);
+          if (pencilMode === "center") toggleDigitIn(setCenterNotes, val);
+          else if (pencilMode === "corner") toggleDigitIn(setCornerNotes, val);
+          else setValueOnTargets(val);
         }
       }
     },
@@ -705,20 +682,64 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       applyCurrentChange,
       moveCurrent,
       pencilMode,
-      clearCubeDigits,
-      applyValueToSelection,
-      toggleDigitInCube,
+      clearDigitsIn,
+      setValueOnTargets,
+      toggleDigitIn,
     ],
   );
 
-  // Ensure the grid retains keyboard focus after toggling pencil/notes mode
+  // Keep focus when mode toggles while something is selected
   useEffect(() => {
-    if (!wrapperRef.current) return;
-    // Only refocus if there's something selected or a current cell, to avoid stealing focus unnecessarily
-    if ((hasAnySelected(selection) || !!current) && document.activeElement !== wrapperRef.current) {
-      wrapperRef.current.focus();
-    }
+    const el = wrapperRef.current;
+    if (!el) return;
+    if ((hasAnySelected(selection) || !!current) && document.activeElement !== el) el.focus();
   }, [pencilMode, selection, current]);
+
+  /* =========================================================
+     Render
+     ========================================================= */
+
+  const cellBorderClasses = useCallback(
+    (r: number, c: number) => {
+      const base = [
+        "size-10",
+        "border",
+        "border-foreground",
+        "dark:border-muted",
+        "text-center",
+        "select-none",
+        "cursor-pointer",
+        cellClassName,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const thick: string[] = [];
+      if (regions) {
+        const id = getRegionId(r, c);
+        const topChange = r === 0 || getRegionId(r - 1, c) !== id;
+        const leftChange = c === 0 || getRegionId(r, c - 1) !== id;
+        const rightChange = c === size - 1 || getRegionId(r, c + 1) !== id;
+        const bottomChange = r === size - 1 || getRegionId(r + 1, c) !== id;
+        if (topChange) thick.push("border-t-2", dividerClassName);
+        if (leftChange) thick.push("border-l-2", dividerClassName);
+        if (rightChange) thick.push("border-r-2", dividerClassName);
+        if (bottomChange) thick.push("border-b-2", dividerClassName);
+      } else {
+        const topThick = r === 0 || r % activeBox.rows === 0;
+        const leftThick = c === 0 || c % activeBox.cols === 0;
+        const rightThick = c === size - 1 || (c + 1) % activeBox.cols === 0;
+        const bottomThick = r === size - 1 || (r + 1) % activeBox.rows === 0;
+        if (topThick) thick.push("border-t-2", dividerClassName);
+        if (leftThick) thick.push("border-l-2", dividerClassName);
+        if (rightThick) thick.push("border-r-2", dividerClassName);
+        if (bottomThick) thick.push("border-b-2", dividerClassName);
+      }
+
+      return cn(base, thick.join(" "));
+    },
+    [regions, getRegionId, size, activeBox, dividerClassName, cellClassName],
+  );
 
   return (
     <div ref={wrapperRef} tabIndex={0} onKeyDown={onKeyDown} className="outline-none focus:outline-none">
@@ -735,30 +756,16 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
           {Array.from({ length: size }).map((_, r) => (
             <tr key={r} role="row">
               {Array.from({ length: size }).map((_, c) => {
-                const up =
-                  r > 0 &&
-                  isSelected(
-                    neighbor({ row: r, col: c }, -1, 0, size).row,
-                    neighbor({ row: r, col: c }, -1, 0, size).col,
-                  );
-                const right =
-                  c < size - 1 &&
-                  isSelected(
-                    neighbor({ row: r, col: c }, 0, 1, size).row,
-                    neighbor({ row: r, col: c }, 0, 1, size).col,
-                  );
-                const down =
-                  r < size - 1 &&
-                  isSelected(
-                    neighbor({ row: r, col: c }, 1, 0, size).row,
-                    neighbor({ row: r, col: c }, 1, 0, size).col,
-                  );
-                const left =
-                  c > 0 &&
-                  isSelected(
-                    neighbor({ row: r, col: c }, 0, -1, size).row,
-                    neighbor({ row: r, col: c }, 0, -1, size).col,
-                  );
+                // neighbor selection checks (avoid repeated neighbor() calls)
+                const nUp = r > 0 ? neighbor({ row: r, col: c }, -1, 0, size) : null;
+                const nRight = c < size - 1 ? neighbor({ row: r, col: c }, 0, 1, size) : null;
+                const nDown = r < size - 1 ? neighbor({ row: r, col: c }, 1, 0, size) : null;
+                const nLeft = c > 0 ? neighbor({ row: r, col: c }, 0, -1, size) : null;
+
+                const up = nUp ? isSelected(nUp.row, nUp.col) : false;
+                const right = nRight ? isSelected(nRight.row, nRight.col) : false;
+                const down = nDown ? isSelected(nDown.row, nDown.col) : false;
+                const left = nLeft ? isSelected(nLeft.row, nLeft.col) : false;
 
                 const topLeft = c > 0 && r > 0 && !isSelected(r - 1, c - 1) && up && left;
                 const topRight = c < size - 1 && r > 0 && !isSelected(r - 1, c + 1) && up && right;
@@ -766,14 +773,13 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                 const bottomRight = c < size - 1 && r < size - 1 && !isSelected(r + 1, c + 1) && down && right;
 
                 const selected = isSelected(r, c);
-                // selection highlight is drawn with absolute edge spans (above color stripes)
 
-                const presetVal = presetGrid?.[r]?.[c] ?? 0;
+                const presetVal = preset?.[r]?.[c] ?? 0;
                 const userVal = userGrid?.[r]?.[c] ?? 0;
                 const displayVal = presetVal > 0 ? presetVal : userVal > 0 ? userVal : "";
 
-                const centerFlags = !presetVal && !userVal ? pencils?.[r]?.[c] : undefined;
-                const cornerFlags = !presetVal && !userVal ? cornerPencils?.[r]?.[c] : undefined;
+                const centerFlags = !presetVal && !userVal ? centerNotes?.[r]?.[c] : undefined;
+                const cornerFlags = !presetVal && !userVal ? cornerNotes?.[r]?.[c] : undefined;
 
                 const maxDigitShown = Math.min(9, size);
                 const centerCandidates: number[] = [];
@@ -789,29 +795,25 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                     <div
                       aria-selected={selected}
-                      aria-readonly={isPreset(r, c) || undefined}
+                      aria-readonly={(!editorialMode && isPreset(r, c)) || undefined}
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
                         isPreset(r, c) ? "text-foreground" : "text-blue-700 dark:text-blue-400 font-bold font-serif",
                       )}
                     >
-                      {/* Color stripes background */}
                       {cellColors.length > 0 && (
-                        // eslint-disable-next-line better-tailwindcss/enforce-consistent-class-order
-                        <div className="absolute inset-0 overflow-hidden flex pointer-events-none">
+                        <div className="pointer-events-none absolute inset-0 flex overflow-hidden">
                           {cellColors.map((clr, i) => (
                             <div key={i} className={cn("h-full flex-1", COLOR_BG_CLASS[clr])} />
                           ))}
                         </div>
                       )}
 
-                      {/* Subtle selection highlight (below borders, above content) */}
                       {selected && (
                         <div className="pointer-events-none absolute inset-0 z-10 bg-white/20 dark:bg-black/10" />
                       )}
 
-                      {/* Selection edges (above highlight) */}
                       {selected && !left && (
                         <span
                           className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-[4px]"

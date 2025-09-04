@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 
 @import "./theme.css";
+@import "./typography.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -12,5 +13,11 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  kbd {
+    @apply inline-flex items-center rounded border border-border bg-muted px-1 py-0.5 text-xs font-sans not-last:me-0.5 font-medium text-foreground tracking-normal;
   }
 }
