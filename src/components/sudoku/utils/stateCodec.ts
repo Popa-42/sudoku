@@ -135,3 +135,35 @@ export const SG1 = {
     return ["SG1", sizeStr, presetEnc, userEnc, centerSeg, cornerSeg, colorsEnc, ""].join("|");
   },
 };
+
+/* =========================================================
+   Optional metadata (title/rules) export
+   Format: M1<flags>|base64url(payload)
+   flags bit0=compressed (gzip)
+   payload: UTF-8 JSON {t,r} possibly gzip-compressed
+   ========================================================= */
+
+function b64urlEncode(bytes: Uint8Array): string {
+  const bin = String.fromCharCode(...bytes);
+  const b64 = btoa(bin);
+  return b64.replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+async function maybeGzip(data: Uint8Array): Promise<{ bytes: Uint8Array; compressed: boolean }> {
+  if (typeof CompressionStream === "undefined") return { bytes: data, compressed: false };
+  const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const cs = new CompressionStream("gzip");
+  const res = new Response(new Blob([ab]).stream().pipeThrough(cs));
+  const buf = await res.arrayBuffer();
+  const out = new Uint8Array(buf);
+  if (out.length < data.length) return { bytes: out, compressed: true };
+  return { bytes: data, compressed: false };
+}
+
+export async function encodeMeta(meta: { title: string; rules: string }): Promise<string> {
+  const json = JSON.stringify({ t: meta.title ?? "", r: meta.rules ?? "" });
+  const raw = new TextEncoder().encode(json);
+  const { bytes, compressed } = await maybeGzip(raw);
+  const flags = compressed ? 1 : 0;
+  return `M1${String.fromCharCode(flags)}|${b64urlEncode(bytes)}`;
+}

@@ -10,10 +10,12 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
 import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
-import { SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
+import { SG1_HEADER, encodeMeta } from "@/components/sudoku/utils/stateCodec";
 import AppMenubar from "@/components/app-menubar";
 import { ExportDialog, UploadDialog } from "@/components/dialogs";
 import { useGlobalShortcuts, usePersistentDarkMode } from "@/hooks/basic";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 
 /* =========================
    Types & constants
@@ -202,6 +204,8 @@ export default function Home() {
   const [notesMode, setNotesMode] = useState<Note>(null);
   const [expertMode, setExpertMode] = useState(false);
   const [editorialMode, setEditorialMode] = useState(false);
+  const [title, setTitle] = useState("");
+  const [rules, setRules] = useState("");
 
   const gridRef = useRef<SudokuGridHandle | null>(null);
 
@@ -212,13 +216,27 @@ export default function Home() {
 
   const { isDark, setIsDark } = usePersistentDarkMode();
 
+  // Build export with optional compact metadata (M1)
+  const buildExport = useCallback(async (): Promise<string> => {
+    const base = gridRef.current?.exportState() ?? "";
+    if (!base) return base;
+    if (!(title || rules)) return base;
+    try {
+      const seg = await encodeMeta({ title, rules });
+      return (base.endsWith("|") ? base : base + "|") + seg;
+    } catch (e) {
+      console.warn("Failed to encode metadata segment", e);
+      return base;
+    }
+  }, [title, rules]);
+
   // share via dialog
-  const handleShare = useCallback(() => {
-    const data = gridRef.current?.exportState();
+  const handleShare = useCallback(async () => {
+    const data = await buildExport();
     if (!data) return;
     setExportText(data);
     setExportOpen(true);
-  }, []);
+  }, [buildExport]);
 
   // import helpers
   const importFromText = useCallback((text: string): boolean => {
@@ -249,26 +267,32 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!expertMode) {
+      setEditorialMode(false);
+    }
+  }, [expertMode]);
+
   // menu helpers
   const getExportState = useCallback(() => gridRef.current?.exportState() ?? "", []);
-  const onMenuSaveFile = useCallback(() => {
-    const data = getExportState();
+  const onMenuSaveFile = useCallback(async () => {
+    const data = await buildExport();
     if (!data) return;
     downloadStringAsFile(data);
-  }, [getExportState]);
+  }, [buildExport]);
   const onMenuShareLink = useCallback(async () => {
-    const data = getExportState();
+    const data = await buildExport();
     if (!data) return;
     const url = new URL(window.location.href);
     url.searchParams.set("state", data);
     await copyToClipboard(url.toString());
     alert("Share link copied to clipboard");
-  }, [getExportState]);
+  }, [buildExport]);
   const onMenuCopyPayload = useCallback(async () => {
-    const data = getExportState();
+    const data = await buildExport();
     if (!data) return;
     await copyToClipboard(data);
-  }, [getExportState]);
+  }, [buildExport]);
   const onMenuOpenFile = useCallback(() => {
     setUploadOpen(true);
     setTimeout(() => {
@@ -363,18 +387,49 @@ export default function Home() {
         setEditorialMode={setEditorialMode}
       />
 
-      <SudokuGrid
-        ref={gridRef}
-        pencilMode={notesMode === "center" ? "center" : notesMode === "corner" ? "corner" : null}
-        currentCell={current}
-        selectedCells={selected}
-        onSelectionChange={setSelected}
-        onCurrentCellChange={setCurrent}
-        editorialMode={expertMode && editorialMode}
-        onCellSelect={({ row, col }) => {
-          console.log("Clicked:", row, col);
-        }}
-      />
+      <div className="flex w-fit flex-col gap-4 md:flex-row">
+        <SudokuGrid
+          ref={gridRef}
+          pencilMode={notesMode === "center" ? "center" : notesMode === "corner" ? "corner" : null}
+          currentCell={current}
+          selectedCells={selected}
+          onSelectionChange={setSelected}
+          onCurrentCellChange={setCurrent}
+          editorialMode={editorialMode}
+          onCellSelect={({ row, col }) => {
+            console.log("Clicked:", row, col);
+          }}
+        />
+        {editorialMode ? (
+          <div className="flex flex-col gap-2 md:w-72">
+            <Input
+              placeholder="Sudoku Title"
+              className="w-full"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <Textarea
+              placeholder="Enter ruleset here…"
+              className="w-full text-justify break-words whitespace-pre-wrap md:h-full"
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+            />
+          </div>
+        ) : (
+          (title || rules) && (
+            <div
+              className={`
+                flex size-fit max-w-90.5 flex-col rounded-md border px-3 py-2 text-justify text-sm break-words
+                hyphens-auto whitespace-pre-wrap
+                md:w-72
+              `}
+            >
+              {title && <h3 className="not-last:mb-1">{title}</h3>}
+              <span>{rules}</span>
+            </div>
+          )
+        )}
+      </div>
 
       <div className="flex w-fit flex-col gap-2 rounded-md border p-2">
         <ModeToggles mode={notesMode} setMode={setNotesMode} />
