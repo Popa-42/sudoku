@@ -3,45 +3,21 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SudokuGrid } from "@/components/sudoku/grid";
-import type { ColorName, SudokuGridHandle } from "@/types";
+import type { ColorName, Note, SudokuGridHandle } from "@/types";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Menubar,
-  MenubarCheckboxItem,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarRadioGroup,
-  MenubarRadioItem,
-  MenubarSeparator,
-  MenubarShortcut,
-  MenubarSub,
-  MenubarSubContent,
-  MenubarSubTrigger,
-  MenubarTrigger,
-} from "@/components/ui/menubar";
-import { Binary, Eraser, FileUp, Paintbrush, Pencil } from "lucide-react";
+import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
 import { SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
+import AppMenubar from "@/components/app-menubar";
+import { ExportDialog, UploadDialog } from "@/components/dialogs";
+import { useGlobalShortcuts, usePersistentDarkMode } from "@/hooks/basic";
 
 /* =========================
    Types & constants
    ========================= */
-
-type Note = "center" | "corner" | "color" | null;
 
 const COLOR_ORDER: ColorName[] = ["red", "orange", "yellow", "green", "cyan", "blue", "violet", "pink", "transparent"];
 
@@ -58,118 +34,6 @@ const digitToCornerMap = {
   8: "bc",
   9: "br",
 } as const;
-
-/* =========================
-   Small hooks
-   ========================= */
-
-function usePersistentDarkMode() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    try {
-      const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
-      const prefersDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-      const next = saved ? saved === "dark" : !!prefersDark;
-      setIsDark(next);
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", next);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", isDark);
-      if (typeof window !== "undefined") localStorage.setItem("theme", isDark ? "dark" : "light");
-    } catch {}
-  }, [isDark]);
-
-  return { isDark, setIsDark };
-}
-
-function useGlobalShortcuts(args: {
-  uploadOpen: boolean;
-  exportOpen: boolean;
-  notesMode: Note;
-  setNotesMode: (m: Note) => void;
-  onReset: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  openUploadDialog: () => void;
-  saveFile: () => void;
-  openFile: () => void;
-}) {
-  const {
-    uploadOpen,
-    exportOpen,
-    notesMode,
-    setNotesMode,
-    onReset,
-    onUndo,
-    onRedo,
-    openUploadDialog,
-    saveFile,
-    openFile,
-  } = args;
-
-  useEffect(() => {
-    const isEditableTarget = (el: EventTarget | null) => {
-      if (!(el instanceof HTMLElement)) return false;
-      const tag = el.tagName;
-      return el.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
-    };
-
-    const onKey = (e: KeyboardEvent) => {
-      const editable = isEditableTarget(e.target);
-
-      if (e.ctrlKey || e.metaKey) {
-        if (!e.shiftKey && !e.altKey) {
-          if (editable) return;
-          if (e.key === "o" || e.key === "O") {
-            e.preventDefault();
-            openUploadDialog();
-            return;
-          }
-          if (e.key === "r" || e.key === "R") {
-            e.preventDefault();
-            onReset();
-            return;
-          }
-          if (e.key === "z" || e.key === "Z") {
-            e.preventDefault();
-            onUndo();
-            return;
-          }
-          if (e.key === "y" || e.key === "Y") {
-            e.preventDefault();
-            onRedo();
-            return;
-          }
-        } else if (e.shiftKey && !e.altKey) {
-          if (e.key === "s" || e.key === "S") {
-            e.preventDefault();
-            saveFile();
-            return;
-          }
-          if (e.key === "o" || e.key === "O") {
-            e.preventDefault();
-            openFile();
-            return;
-          }
-        }
-      }
-
-      if (!editable && !uploadOpen && !exportOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === "n" || e.key === "N") setNotesMode(null);
-        if (e.key === "x" || e.key === "X") setNotesMode(notesMode === "center" ? null : "center");
-        if (e.key === "c" || e.key === "C") setNotesMode(notesMode === "corner" ? null : "corner");
-        if (e.key === "v" || e.key === "V") setNotesMode(notesMode === "color" ? null : "color");
-      }
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [uploadOpen, exportOpen, notesMode, setNotesMode, onReset, onUndo, onRedo, openUploadDialog, saveFile, openFile]);
-}
 
 /* =========================
    Small helpers
@@ -196,125 +60,6 @@ function downloadStringAsFile(text: string, filename = "sudoku.sg1.txt") {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-/* =========================
-   Dialog components
-   ========================= */
-
-function UploadDialog(props: { open: boolean; setOpen: (v: boolean) => void; onImportText: (text: string) => void }) {
-  const { open, setOpen, onImportText } = props;
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const textRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const onFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const txt = (await f.text()).trim();
-    setText(txt);
-    setError(null);
-    e.target.value = "";
-  };
-
-  const onSend = () => {
-    const txt = text.trim();
-    if (!txt) {
-      setError("Please paste a state or choose a file.");
-      return;
-    }
-    if (!txt.startsWith(SG1_HEADER)) {
-      setError(`Invalid payload. Expected text starting with ${SG1_HEADER}`);
-      return;
-    }
-    setError(null);
-    onImportText(txt);
-    setOpen(false);
-    setText("");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Upload sudoku state</DialogTitle>
-          <DialogDescription>Paste your SG1 payload or choose a file from your device.</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-2">
-          <Label htmlFor="sg1">Sudoku state</Label>
-          <Textarea
-            id="sg1"
-            placeholder={`${SG1_HEADER}...`}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            aria-invalid={error ? true : undefined}
-            spellCheck={false}
-            ref={textRef}
-          />
-          {error ? (
-            <p className="text-sm text-destructive">{error}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Tip: payload should start with {SG1_HEADER}</p>
-          )}
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} type="button">
-              <FileUp size={12} /> Choose file
-            </Button>
-            <input ref={fileRef} type="file" accept=".txt,.sg1" className="hidden" onChange={onFilePick} />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} type="button">
-            Cancel
-          </Button>
-          <Button onClick={onSend} type="button">
-            Send
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ExportDialog(props: {
-  open: boolean;
-  setOpen: (v: boolean) => void;
-  text: string;
-  onCopy: () => void;
-  onDownload: () => void;
-}) {
-  const { open, setOpen, text, onCopy, onDownload } = props;
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Export sudoku state</DialogTitle>
-          <DialogDescription>Copy or download your SG1 payload.</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-2">
-          <Label htmlFor="sg1-out">Sudoku state</Label>
-          <Textarea id="sg1-out" value={text} readOnly spellCheck={false} />
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} type="button">
-            Close
-          </Button>
-          <Button variant="secondary" onClick={onCopy} type="button">
-            Copy
-          </Button>
-          <Button onClick={onDownload} type="button">
-            Download
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 /* =========================
@@ -596,151 +341,24 @@ export default function Home() {
 
   return (
     <div className="space-y-4 p-4">
-      <Menubar className="w-fit">
-        <MenubarMenu>
-          <MenubarTrigger>File</MenubarTrigger>
-          <MenubarContent>
-            {expertMode ? (
-              <>
-                <MenubarSub>
-                  <MenubarSubTrigger>Save...</MenubarSubTrigger>
-                  <MenubarSubContent>
-                    <MenubarItem onClick={handleShare}>
-                      Show saving dialog
-                      <MenubarShortcut>
-                        <kbd>Ctrl</kbd>
-                        <kbd>S</kbd>
-                      </MenubarShortcut>
-                    </MenubarItem>
-                    <MenubarItem onClick={onMenuSaveFile}>
-                      Save file
-                      <MenubarShortcut>
-                        <kbd>Ctrl</kbd>
-                        <kbd>Shift</kbd>
-                        <kbd>S</kbd>
-                      </MenubarShortcut>
-                    </MenubarItem>
-                    <MenubarItem onClick={onMenuShareLink}>Share link</MenubarItem>
-                    {expertMode && <MenubarItem onClick={onMenuCopyPayload}>Copy SG1 payload</MenubarItem>}
-                  </MenubarSubContent>
-                </MenubarSub>
-                <MenubarSub>
-                  <MenubarSubTrigger>Open...</MenubarSubTrigger>
-                  <MenubarSubContent>
-                    <MenubarItem onClick={() => setUploadOpen(true)}>
-                      Show opening dialog
-                      <MenubarShortcut>
-                        <kbd>Ctrl</kbd>
-                        <kbd>O</kbd>
-                      </MenubarShortcut>
-                    </MenubarItem>
-                    <MenubarItem onClick={onMenuOpenFile}>
-                      Open file
-                      <MenubarShortcut>
-                        <kbd>Ctrl</kbd>
-                        <kbd>Shift</kbd>
-                        <kbd>O</kbd>
-                      </MenubarShortcut>
-                    </MenubarItem>
-                    <MenubarItem onClick={onMenuPastePayload}>Paste SG1 payload</MenubarItem>
-                  </MenubarSubContent>
-                </MenubarSub>
-              </>
-            ) : (
-              <>
-                <MenubarItem onClick={handleShare}>
-                  Save
-                  <MenubarShortcut>
-                    <kbd>Ctrl</kbd>
-                    <kbd>S</kbd>
-                  </MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem onClick={() => setUploadOpen(true)}>
-                  Open
-                  <MenubarShortcut>
-                    <kbd>Ctrl</kbd>
-                    <kbd>O</kbd>
-                  </MenubarShortcut>
-                </MenubarItem>
-              </>
-            )}
-            <MenubarSeparator />
-            <MenubarItem onClick={onMenuReset}>
-              Reset current puzzle
-              <MenubarShortcut>
-                <kbd>Ctrl</kbd>
-                <kbd>R</kbd>
-              </MenubarShortcut>
-            </MenubarItem>
-          </MenubarContent>
-        </MenubarMenu>
-
-        <MenubarMenu>
-          <MenubarTrigger>Edit</MenubarTrigger>
-          <MenubarContent>
-            <MenubarItem inset onClick={onMenuUndo}>
-              Undo
-              <MenubarShortcut>
-                <kbd>Ctrl</kbd>
-                <kbd>Z</kbd>
-              </MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem inset onClick={onMenuRedo}>
-              Redo
-              <MenubarShortcut>
-                <kbd>Ctrl</kbd>
-                <kbd>Y</kbd>
-              </MenubarShortcut>
-            </MenubarItem>
-            {expertMode && (
-              <>
-                <MenubarSeparator />
-                <MenubarCheckboxItem disabled>Editorial Mode</MenubarCheckboxItem>
-              </>
-            )}
-          </MenubarContent>
-        </MenubarMenu>
-
-        <MenubarMenu>
-          <MenubarTrigger>View</MenubarTrigger>
-          <MenubarContent>
-            <MenubarRadioGroup value={notesMode || "normal"} onValueChange={(v) => setNotesMode(v as Note)}>
-              <MenubarRadioItem value={"normal"}>
-                Normal
-                <MenubarShortcut>
-                  <kbd>N</kbd>
-                </MenubarShortcut>
-              </MenubarRadioItem>
-              <MenubarRadioItem value="center">
-                Center Notes
-                <MenubarShortcut>
-                  <kbd>X</kbd>
-                </MenubarShortcut>
-              </MenubarRadioItem>
-              <MenubarRadioItem value="corner">
-                Corner Notes
-                <MenubarShortcut>
-                  <kbd>C</kbd>
-                </MenubarShortcut>
-              </MenubarRadioItem>
-              <MenubarRadioItem value="color">
-                Color Annotations
-                <MenubarShortcut>
-                  <kbd>V</kbd>
-                </MenubarShortcut>
-              </MenubarRadioItem>
-            </MenubarRadioGroup>
-            <MenubarSeparator />
-            <MenubarCheckboxItem checked={isDark} onCheckedChange={(v) => setIsDark(v)}>
-              Dark Mode
-            </MenubarCheckboxItem>
-            <MenubarSeparator />
-            <MenubarCheckboxItem checked={expertMode} onCheckedChange={(v) => setExpertMode(v)}>
-              Expert Mode
-            </MenubarCheckboxItem>
-          </MenubarContent>
-        </MenubarMenu>
-      </Menubar>
+      <AppMenubar
+        expertMode={expertMode}
+        setExpertMode={setExpertMode}
+        isDark={isDark}
+        setIsDark={setIsDark}
+        notesMode={notesMode}
+        setNotesMode={setNotesMode}
+        onMenuUndo={onMenuUndo}
+        onMenuRedo={onMenuRedo}
+        onMenuReset={onMenuReset}
+        onMenuSaveFile={onMenuSaveFile}
+        onMenuShareLink={onMenuShareLink}
+        onMenuOpenFile={onMenuOpenFile}
+        onMenuCopyPayload={onMenuCopyPayload}
+        onMenuPastePayload={onMenuPastePayload}
+        setUploadOpen={setUploadOpen}
+        handleShare={handleShare}
+      />
 
       <SudokuGrid
         ref={gridRef}
