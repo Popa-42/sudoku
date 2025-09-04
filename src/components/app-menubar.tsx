@@ -33,6 +33,8 @@ export default function AppMenubar({
   onMenuPastePayload,
   setUploadOpen,
   handleShare,
+  editorialMode,
+  setEditorialMode,
 }: {
   expertMode: boolean;
   setExpertMode: (v: boolean) => void;
@@ -50,6 +52,8 @@ export default function AppMenubar({
   onMenuPastePayload: () => void;
   setUploadOpen: (v: boolean) => void;
   handleShare: () => void;
+  editorialMode: boolean;
+  setEditorialMode: (v: boolean) => void;
 }) {
   return (
     <Menubar className="w-fit">
@@ -151,7 +155,9 @@ export default function AppMenubar({
           {expertMode && (
             <>
               <MenubarSeparator />
-              <MenubarCheckboxItem disabled>Editorial Mode</MenubarCheckboxItem>
+              <MenubarCheckboxItem checked={editorialMode} onCheckedChange={(v) => setEditorialMode(v)}>
+                Editorial Mode
+              </MenubarCheckboxItem>
             </>
           )}
         </MenubarContent>

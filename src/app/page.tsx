@@ -201,6 +201,7 @@ export default function Home() {
   const [selected, setSelected] = useState<boolean[][]>(Array.from({ length: 9 }, () => Array(9).fill(false)));
   const [notesMode, setNotesMode] = useState<Note>(null);
   const [expertMode, setExpertMode] = useState(false);
+  const [editorialMode, setEditorialMode] = useState(false);
 
   const gridRef = useRef<SudokuGridHandle | null>(null);
 
@@ -358,6 +359,8 @@ export default function Home() {
         onMenuPastePayload={onMenuPastePayload}
         setUploadOpen={setUploadOpen}
         handleShare={handleShare}
+        editorialMode={editorialMode}
+        setEditorialMode={setEditorialMode}
       />
 
       <SudokuGrid
@@ -367,6 +370,7 @@ export default function Home() {
         selectedCells={selected}
         onSelectionChange={setSelected}
         onCurrentCellChange={setCurrent}
+        editorialMode={expertMode && editorialMode}
         onCellSelect={({ row, col }) => {
           console.log("Clicked:", row, col);
         }}

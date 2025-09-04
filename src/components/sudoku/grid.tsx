@@ -36,6 +36,7 @@ type SudokuGridProps = React.HTMLAttributes<HTMLDivElement> & {
   regions?: number[][];
   cellClassName?: string;
   dividerClassName?: string;
+  editorialMode?: boolean; // when true, digits edit the preset instead of the user grid
 };
 
 /* =========================================================
@@ -57,6 +58,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     regions,
     cellClassName,
     dividerClassName = "border-foreground dark:border-muted",
+    editorialMode = false,
     ...props
   },
   ref,
@@ -124,7 +126,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   useEffect(() => {
     pushHistory(snapshot());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userGrid, centerNotes, cornerNotes, colorGrid]);
+  }, [preset, userGrid, centerNotes, cornerNotes, colorGrid]);
 
   /* ---------- resets on size/preset change ---------- */
   useEffect(() => {
@@ -204,6 +206,32 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
   const setValueOnTargets = useCallback(
     (value: number) => {
       withTargets((r, c) => {
+        if (editorialMode) {
+          // Directly edit preset; keep puzzle clean by clearing user value and notes
+          setPreset((prev) => {
+            const next = prev.map((row) => row.slice());
+            next[r][c] = value > 0 ? value : 0;
+            return next;
+          });
+          setUserGrid((prev) => {
+            const next = prev.map((row) => row.slice());
+            next[r][c] = 0;
+            return next;
+          });
+          setCenterNotes((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice()));
+            next[r][c].fill(0);
+            return next;
+          });
+          setCornerNotes((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice()));
+            next[r][c].fill(0);
+            return next;
+          });
+          // Colors left untouched intentionally
+          return;
+        }
+        // Normal mode: edit user grid; skip preset cells
         if (isPreset(r, c)) return;
         setUserGrid((prev) => {
           const next = prev.map((row) => row.slice());
@@ -212,7 +240,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         });
       });
     },
-    [withTargets, isPreset],
+    [withTargets, isPreset, editorialMode],
   );
 
   const toggleDigitIn = useCallback(
@@ -337,6 +365,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         suppressHistoryRef.current++;
         try {
           const parts = snap.split("|");
+          setPreset(SG1.decodeNumGrid(parts[2], size));
           setUserGrid(SG1.decodeNumGrid(parts[3], size));
           setCenterNotes(SG1.decodeDigitCube(parts[4], size));
           setCornerNotes(SG1.decodeDigitCube(parts[5], size));
@@ -356,6 +385,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         suppressHistoryRef.current++;
         try {
           const parts = snap.split("|");
+          setPreset(SG1.decodeNumGrid(parts[2], size));
           setUserGrid(SG1.decodeNumGrid(parts[3], size));
           setCenterNotes(SG1.decodeDigitCube(parts[4], size));
           setCornerNotes(SG1.decodeDigitCube(parts[5], size));
@@ -719,7 +749,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
                   <td key={c} role="gridcell" className={cellBorderClasses(r, c)}>
                     <div
                       aria-selected={selected}
-                      aria-readonly={isPreset(r, c) || undefined}
+                      aria-readonly={(!editorialMode && isPreset(r, c)) || undefined}
                       className={cn(
                         "relative flex size-full cursor-pointer items-center justify-center text-2xl select-none",
                         SEL_COLOR_VAR,
