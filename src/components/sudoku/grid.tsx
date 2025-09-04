@@ -272,6 +272,51 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     [withTargets, isPreset],
   );
 
+  const isValidSudoku = useCallback((): boolean => {
+    // Build effective grid where preset takes precedence over user input
+    const effectiveGrid: number[][] = Array.from({ length: size }, (_, r) =>
+      Array.from({ length: size }, (_, c) => {
+        const presetVal = preset?.[r]?.[c] ?? 0;
+        const userVal = userGrid?.[r]?.[c] ?? 0;
+        return presetVal > 0 ? presetVal : userVal;
+      }),
+    );
+
+    const hasDuplicates = (arr: number[]) => {
+      const seen = new Set<number>();
+      for (const v of arr) {
+        if (v === 0) return true; // zero is considered a duplicate (empty cell)
+        if (v > 0) {
+          if (seen.has(v)) return true;
+          seen.add(v);
+        }
+      }
+      return false;
+    };
+
+    // Check rows
+    for (let r = 0; r < size; r++) if (hasDuplicates(effectiveGrid[r])) return false;
+
+    // Check columns
+    for (let c = 0; c < size; c++) {
+      const col = Array.from({ length: size }, (_, r) => effectiveGrid[r][c]);
+      if (hasDuplicates(col)) return false;
+    }
+
+    // Check regions (using getRegionId)
+    const groups = new Map<number, number[]>();
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const id = getRegionId(r, c);
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id)!.push(effectiveGrid[r][c]);
+      }
+    }
+    for (const vals of groups.values()) if (hasDuplicates(vals)) return false;
+
+    return true;
+  }, [size, preset, userGrid, getRegionId]);
+
   /* =========================================================
      Imperative API
      ========================================================= */
@@ -396,6 +441,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         }
         return true;
       },
+      isValid: () => isValidSudoku(),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [

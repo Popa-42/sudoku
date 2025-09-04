@@ -34,6 +34,8 @@ export type SudokuGridHandle = {
   reset: () => void;
   undo: () => boolean;
   redo: () => boolean;
+  // Validation
+  isValid: () => boolean;
 };
 
 export type Note = "center" | "corner" | "color" | null;

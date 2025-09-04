@@ -455,6 +455,16 @@ export default function Home() {
         <ModeToggles mode={notesMode} setMode={setNotesMode} />
         <Separator />
         <AdaptivePalette mode={notesMode} onClick={handleAdaptiveClick} />
+        <Separator />
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const valid = gridRef.current?.isValid();
+            alert(valid ? "No conflicts found" : "Conflicts detected");
+          }}
+        >
+          Check Sudoku
+        </Button>
       </div>
 
       <UploadDialog
