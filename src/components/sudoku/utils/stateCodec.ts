@@ -167,3 +167,45 @@ export async function encodeMeta(meta: { title: string; rules: string }): Promis
   const flags = compressed ? 1 : 0;
   return `M1${String.fromCharCode(flags)}|${b64urlEncode(bytes)}`;
 }
+
+export async function decodeMeta(seg: string): Promise<{ title: string; rules: string } | null> {
+  if (!seg || seg.length < 4 || seg[0] !== "M" || seg[1] !== "1") return null;
+  const flags = seg.charCodeAt(2) || 0;
+  const parts = seg.split("|");
+  const dataB64 = parts[1] ?? "";
+  if (!dataB64) return null;
+
+  let data: Uint8Array;
+  try {
+    // base64url decode
+    const pad = dataB64.length % 4 ? 4 - (dataB64.length % 4) : 0;
+    const base64 = (dataB64 + "=".repeat(pad)).replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(base64);
+    data = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+  } catch {
+    return null;
+  }
+
+  const compressed = (flags & 1) !== 0;
+  if (compressed) {
+    if (typeof DecompressionStream === "undefined") return null;
+    try {
+      const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+      const ds = new DecompressionStream("gzip");
+      const res = new Response(new Blob([ab]).stream().pipeThrough(ds));
+      const buf = await res.arrayBuffer();
+      data = new Uint8Array(buf);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const txt = new TextDecoder().decode(data);
+    const obj = JSON.parse(txt) as { t?: string; r?: string };
+    return { title: obj.t ?? "", rules: obj.r ?? "" };
+  } catch {
+    return null;
+  }
+}

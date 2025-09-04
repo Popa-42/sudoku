@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
 import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
-import { SG1_HEADER, encodeMeta } from "@/components/sudoku/utils/stateCodec";
+import { SG1_HEADER, encodeMeta, decodeMeta } from "@/components/sudoku/utils/stateCodec";
 import AppMenubar from "@/components/app-menubar";
 import { ExportDialog, UploadDialog } from "@/components/dialogs";
 import { useGlobalShortcuts, usePersistentDarkMode } from "@/hooks/basic";
@@ -239,13 +239,33 @@ export default function Home() {
   }, [buildExport]);
 
   // import helpers
-  const importFromText = useCallback((text: string): boolean => {
+  const importFromText = useCallback(async (text: string): Promise<boolean> => {
     if (!text?.startsWith(SG1_HEADER)) {
       alert("Invalid payload");
       return false;
     }
     try {
       gridRef.current?.importState(text);
+
+      // Always reset metadata first, then try to decode if found
+      setTitle("");
+      setRules("");
+
+      // Attempt to decode optional M1 metadata and populate title/rules
+      const parts = text.split("|");
+      for (let i = 0; i < parts.length - 1; i++) {
+        const tag = parts[i];
+        const body = parts[i + 1];
+        if (tag && tag.startsWith("M1") && body) {
+          const meta = await decodeMeta(`${tag}|${body}`);
+          if (meta) {
+            setTitle(meta.title || "");
+            setRules(meta.rules || "");
+          }
+          break;
+        }
+      }
+
       return true;
     } catch (e) {
       console.error(e);
