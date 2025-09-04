@@ -73,4 +73,4 @@ jobs:
           preview-branch: "gh-pages"
           umbrella-dir: "pr-preview"
           action: "auto"
-          pages-base-url: "https://sudoku.p0pa.de/"
+          pages-base-url: "sudoku.p0pa.de"
