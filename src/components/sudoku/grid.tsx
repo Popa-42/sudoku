@@ -640,6 +640,18 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key;
 
+      // Ctrl/Meta + A => select entire grid
+      if ((e.ctrlKey || e.metaKey) && (key === "a" || key === "A")) {
+        e.preventDefault();
+        const full = Array.from({ length: size }, () => Array.from({ length: size }, () => true));
+        applySelectionChange(full);
+        // Keep existing current cell if present, else set to first cell
+        const nextCurrent = current ?? ([0, 0] as Cell);
+        applyCurrentChange(nextCurrent);
+        setSelectionStack(stackFromMatrix(full));
+        return;
+      }
+
       if (key === "Escape") {
         e.preventDefault();
         applySelectionChange(createEmptySelection(size));
@@ -685,6 +697,7 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       clearDigitsIn,
       setValueOnTargets,
       toggleDigitIn,
+      current,
     ],
   );
 
