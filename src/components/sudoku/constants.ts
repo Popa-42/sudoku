@@ -27,3 +27,15 @@ export const COLOR_BG_CLASS: Record<ColorName, string> = {
   pink: "bg-pink-200 dark:bg-pink-500/40",
   transparent: "bg-transparent",
 };
+
+export const COLOR_ORDER: ColorName[] = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "cyan",
+  "blue",
+  "violet",
+  "pink",
+  "transparent",
+];

@@ -1,7 +1,13 @@
 // /src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
-import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
+import {
+  COLOR_BG_CLASS,
+  CORNER_POS_CLASSES,
+  CORNER_POS_ORDER_ALL,
+  SEL_COLOR_VAR,
+  COLOR_ORDER,
+} from "@/components/sudoku/constants";
 import { from36, SG1, SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
 import {
   buildSingleSelection,
@@ -652,6 +658,44 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return;
       }
 
+      // Color mode keyboard handling
+      if (pencilMode === "color") {
+        // Clear colors
+        if (key === "Backspace" || key === "Delete" || key === "0") {
+          e.preventDefault();
+          const targets = selectionTargets(selection, current);
+          if (!targets.length) return;
+          setColorGrid((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
+            for (const [r, c] of targets) next[r][c] = [];
+            return next;
+          });
+          return;
+        }
+        // Toggle specific color 1..9
+        if (/^[1-9]$/.test(key)) {
+          const val = parseInt(key, 10);
+          // map 1..9 -> COLOR_ORDER[0..8]
+          if (val >= 1 && val <= 9 && val - 1 < COLOR_ORDER.length) {
+            e.preventDefault();
+            const color = COLOR_ORDER[val - 1]!;
+            const targets = selectionTargets(selection, current);
+            if (!targets.length) return;
+            setColorGrid((prev) => {
+              const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
+              for (const [r, c] of targets) {
+                const list = next[r][c];
+                const idx = list.indexOf(color);
+                if (idx >= 0) list.splice(idx, 1);
+                else list.push(color);
+              }
+              return next;
+            });
+            return;
+          }
+        }
+      }
+
       if (key === "Escape") {
         e.preventDefault();
         applySelectionChange(createEmptySelection(size));
@@ -677,8 +721,8 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return;
       }
 
-      // 1..9 only (stable UI for size > 9)
-      if (/^[1-9]$/.test(key)) {
+      // 1..9 only (stable UI for size > 9) for digits/notes (non-color modes)
+      if (/^[1-9]$/.test(key) && pencilMode !== "color") {
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
@@ -698,6 +742,8 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       setValueOnTargets,
       toggleDigitIn,
       current,
+      selection,
+      setColorGrid,
     ],
   );
 

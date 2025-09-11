@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { COLOR_BG_CLASS, CORNER_POS_CLASSES } from "@/components/sudoku/constants";
 import { Binary, Eraser, Paintbrush, Pencil } from "lucide-react";
-import { SG1_HEADER, encodeMeta, decodeMeta } from "@/components/sudoku/utils/stateCodec";
+import { decodeMeta, encodeMeta, SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
 import AppMenubar from "@/components/app-menubar";
 import { ExportDialog, UploadDialog } from "@/components/dialogs";
 import { useGlobalShortcuts, usePersistentDarkMode } from "@/hooks/basic";
@@ -410,7 +410,15 @@ export default function Home() {
       <div className="flex w-fit flex-col gap-4 md:flex-row">
         <SudokuGrid
           ref={gridRef}
-          pencilMode={notesMode === "center" ? "center" : notesMode === "corner" ? "corner" : null}
+          pencilMode={
+            notesMode === "center"
+              ? "center"
+              : notesMode === "corner"
+                ? "corner"
+                : notesMode === "color"
+                  ? "color"
+                  : null
+          }
           currentCell={current}
           selectedCells={selected}
           onSelectionChange={setSelected}
