@@ -108,3 +108,46 @@ export function useGlobalShortcuts(args: {
     return () => window.removeEventListener("keydown", onKey);
   }, [uploadOpen, exportOpen, notesMode, setNotesMode, onReset, onUndo, onRedo, openUploadDialog, saveFile, openFile]);
 }
+
+/*
+ * useIsMobile
+ * Returns true if the current viewport width is less than the provided rem threshold (default 48rem).
+ * 48rem is commonly 768px when root font-size is 16px, but this hook computes based on the actual root font-size.
+ */
+export function useIsMobile(thresholdRem = 48) {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return false;
+    const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize || "16") || 16;
+    return window.innerWidth < thresholdRem * rootSize;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    let frame: number | null = null;
+
+    const evaluate = () => {
+      frame = null;
+      const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize || "16") || 16;
+      const next = window.innerWidth < thresholdRem * rootSize;
+      setIsMobile((prev) => (prev === next ? prev : next));
+    };
+
+    const onResize = () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(evaluate);
+    };
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    // initial re-check in case hydration width differs
+    onResize();
+
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [thresholdRem]);
+
+  return isMobile;
+}
