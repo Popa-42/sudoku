@@ -448,6 +448,11 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return true;
       },
       isValid: () => isValidSudoku(),
+      setSolution: () => {},
+      clearSolution: () => {},
+      hasSolution: () => false,
+      captureSolutionFromCurrent: () => false,
+      flashErrors: () => 0,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [

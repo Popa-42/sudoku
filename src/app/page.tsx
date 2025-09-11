@@ -318,7 +318,6 @@ export default function Home() {
   }, [expertMode]);
 
   // menu helpers
-  const getExportState = useCallback(() => gridRef.current?.exportState() ?? "", []);
   const onMenuSaveFile = useCallback(async () => {
     const data = await buildExport();
     if (!data) return;

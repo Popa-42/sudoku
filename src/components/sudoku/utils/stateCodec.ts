@@ -122,8 +122,9 @@ export const SG1 = {
     center: number[][][];
     corner: number[][][];
     colors: ColorName[][][];
+    solution?: number[][]; // optional intended solution (same size)
   }): string {
-    const { size, preset, user, center, corner, colors } = args;
+    const { size, preset, user, center, corner, colors, solution } = args;
     const sizeStr = to36(size);
     const presetEnc = SG1.encodeNumGrid(preset, size);
     const userEnc = SG1.encodeNumGrid(user, size);
@@ -132,7 +133,12 @@ export const SG1 = {
     const colorsEnc = SG1.encodeColors(colors, size);
     const centerSeg = to36(cCenter.width) + cCenter.data;
     const cornerSeg = to36(cCorner.width) + cCorner.data;
-    return ["SG1", sizeStr, presetEnc, userEnc, centerSeg, cornerSeg, colorsEnc, ""].join("|");
+    const parts = ["SG1", sizeStr, presetEnc, userEnc, centerSeg, cornerSeg, colorsEnc];
+    if (solution) {
+      parts.push(SG1.encodeNumGrid(solution, size));
+    }
+    parts.push(""); // trailing empty for easier appending of future segments
+    return parts.join("|");
   },
 };
 
