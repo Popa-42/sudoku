@@ -276,14 +276,38 @@ export default function Home() {
 
   // try import from URL once
   useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      const q = url.searchParams.get("state") || url.hash.replace(/^#state=/, "");
-      if (!q) return;
-      importFromText(decodeURIComponent(q));
-    } catch (e) {
-      console.error(e);
-    }
+    (async () => {
+      try {
+        const url = new URL(window.location.href);
+        let raw: string | null = null;
+        let cameFrom: "search" | "hash" | null = null;
+
+        if (url.searchParams.has("state")) {
+          raw = url.searchParams.get("state");
+          cameFrom = "search";
+        } else if (/^#state=/.test(url.hash)) {
+          raw = url.hash.replace(/^#state=/, "");
+          cameFrom = "hash";
+        }
+        if (!raw) return;
+
+        const decoded = decodeURIComponent(raw);
+        const ok = await importFromText(decoded);
+        if (ok) {
+          // Remove the state indicator from the URL without adding a history entry
+          if (cameFrom === "search") {
+            url.searchParams.delete("state");
+            const remaining = url.searchParams.toString();
+            const clean = remaining ? `${url.pathname}?${remaining}` : url.pathname;
+            window.history.replaceState(null, "", clean);
+          } else if (cameFrom === "hash") {
+            window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -479,7 +503,7 @@ export default function Home() {
         open={uploadOpen}
         setOpen={setUploadOpen}
         onImportText={(txt) => {
-          importFromText(txt);
+          importFromText(txt).then();
         }}
       />
 
