@@ -1,8 +1,6 @@
 1:"$Sreact.fragment"
-2:I[97367,["/pr-preview/pr-18/_next/static/chunks/42879de7b8087bc9.js"],"ViewportBoundary"]
-4:I[97367,["/pr-preview/pr-18/_next/static/chunks/42879de7b8087bc9.js"],"MetadataBoundary"]
-5:"$Sreact.suspense"
-7:I[27201,["/pr-preview/pr-18/_next/static/chunks/42879de7b8087bc9.js"],"IconMark"]
-0:{"buildId":"gABLe9QjPKL-gkBHELcqr","rsc":["$","$1","h",{"children":[["$","meta",null,{"name":"robots","content":"noindex"}],["$","$L2",null,{"children":"$@3"}],["$","div",null,{"hidden":true,"children":["$","$L4",null,{"children":["$","$5",null,{"name":"Next.Metadata","children":"$@6"}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"loading":null,"isPartial":false}
-3:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
-6:[["$","title","0",{"children":"Sudoku"}],["$","meta","1",{"name":"description","content":"Sudoku"}],["$","link","2",{"rel":"icon","href":"/assets/favicon.ico","type":"image/x-icon","sizes":"96x96"}],["$","$L7","3",{}]]
+2:I[97367,["/pr-preview/pr-18/_next/static/chunks/4fd93823156e59e8.js"],"ViewportBoundary"]
+3:I[97367,["/pr-preview/pr-18/_next/static/chunks/4fd93823156e59e8.js"],"MetadataBoundary"]
+4:"$Sreact.suspense"
+5:I[27201,["/pr-preview/pr-18/_next/static/chunks/4fd93823156e59e8.js"],"IconMark"]
+0:{"buildId":"k76Wu4uPY-dx02Qjj7BpU","rsc":["$","$1","h",{"children":[["$","meta",null,{"name":"robots","content":"noindex"}],["$","$L2",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$L3",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Sudoku"}],["$","meta","1",{"name":"description","content":"Sudoku"}],["$","link","2",{"rel":"icon","href":"/assets/favicon.ico","type":"image/x-icon","sizes":"96x96"}],["$","$L5","3",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"loading":null,"isPartial":false}
