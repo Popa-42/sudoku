@@ -1,33 +1,70 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-import gitignore from "eslint-config-flat-gitignore";
-import eslintParserTypeScript from "@typescript-eslint/parser";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 import eslintPluginBetterTailwindcss from "eslint-plugin-better-tailwindcss";
-import eslintPluginPrettierRecommended from "eslint-plugin-prettier/recommended";
+import prettierRecommended from "eslint-plugin-prettier/recommended";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+  // Keep this late so it can turn off formatting rules from earlier presets.
+  prettierRecommended,
 
-const eslintConfig = [
-  gitignore(),
+  // Override default ignores of eslint-config-next, plus your project ignores.
+  globalIgnores([".next/**", "out/**", "build/**", "dist/**", "coverage/**", "node_modules/**", "next-env.d.ts"]),
+
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.next/**", "**/coverage/**"],
-  },
-  ...compat.config({
-    extends: ["next/core-web-vitals", "next/typescript", "plugin:prettier/recommended"],
-    overrides: [
-      {
-        files: ["src/Types.ts"],
-        rules: {
-          "@typescript-eslint/no-unused-vars": "off",
+    linterOptions: {
+      reportUnusedDisableDirectives: "warn",
+    },
+    settings: {
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+          project: "./tsconfig.json",
         },
       },
-    ],
+      "better-tailwindcss": {
+        entryPoint: "public/assets/styles/globals.css",
+        attributes: ["className", "classNames", "classes", "styles", "style", ".*Classes", ".*Variants"],
+        callees: ["clsx", "cn", "cva", "tw", ".*Classes", ".*Variants"],
+        variables: [
+          ".*Classes",
+          ".*Variants",
+          [
+            ".*Classes",
+            [
+              {
+                match: "objectValues",
+                pathPattern: "[a-z]+[A-Za-z]*",
+              },
+            ],
+          ],
+          [
+            ".*Variants",
+            [
+              {
+                match: "objectValues",
+                pathPattern: "[a-z]+[A-Za-z]*",
+              },
+            ],
+          ],
+        ],
+      },
+    },
+    rules: {
+      "prettier/prettier": [
+        "error",
+        {
+          endOfLine: "lf",
+        },
+      ],
+    },
+  },
+
+  {
+    files: ["**/*.{ts,tsx,cts,mts}"],
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "warn",
@@ -40,40 +77,16 @@ const eslintConfig = [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "@typescript-eslint/no-explicit-any": ["error"],
-    },
-    settings: {
-      "import/resolver": {
-        typescript: {
-          alwaysTryTypes: true,
-          project: "./tsconfig.json",
-        },
-      },
-    },
-  }),
-  {
-    files: ["**/*.{ts,tsx,cts,mts}"],
-    languageOptions: {
-      parser: eslintParserTypeScript,
-      parserOptions: {
-        project: true,
-      },
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
+
   {
-    files: ["**/*.{jsx,tsx}"],
-    languageOptions: {
-      parserOptions: {
-        ecmaFeatures: {
-          jsx: true,
-        },
-      },
-    },
+    files: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
     plugins: {
       "better-tailwindcss": eslintPluginBetterTailwindcss,
     },
     rules: {
-      // Readable Tailwind
       ...eslintPluginBetterTailwindcss.configs["recommended-error"].rules,
 
       "better-tailwindcss/enforce-consistent-line-wrapping": [
@@ -85,50 +98,14 @@ const eslintConfig = [
           group: "newLine",
         },
       ],
-      "better-tailwindcss/enforce-consistent-class-order": "warn",
-      "better-tailwindcss/enforce-consistent-variable-syntax": "warn",
-      "better-tailwindcss/no-unregistered-classes": ["off"],
-
-      // Prettier
-      ...eslintPluginPrettierRecommended.rules,
-      "prettier/prettier": [
-        "error",
-        {
-          endOfLine: "lf",
-        },
-      ],
-    },
-    settings: {
-      "better-tailwindcss": {
-        // tailwindcss 4: the path to the entry file of the css based tailwind config (eg: `src/global.css`)
-        entryPoint: "public/assets/styles/globals.css",
-
-        attributes: ["class", "className", ".*Class(Name|es)?$", ".*Variants?$"],
-        callees: [
-          "cva",
-          "cx",
-          "cn",
-          "clsx",
-          "tw",
-          "tv",
-          ".*Variants?$",
-          [
-            "cva",
-            [
-              {
-                match: "strings",
-              },
-              {
-                match: "objectValues",
-                pathPattern: "^variants(\\.[a-z]+[a-zA-Z]*)+$",
-              },
-            ],
-          ],
-        ],
-        variables: [".*Variants?$", ".*Classes?$"],
-      },
+      "better-tailwindcss/no-unregistered-classes": "off",
     },
   },
-];
 
-export default eslintConfig;
+  {
+    files: ["src/Types.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+]);

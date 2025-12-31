@@ -2,24 +2,43 @@ import type { Note } from "@/types";
 import { useEffect, useState } from "react";
 
 export function usePersistentDarkMode() {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
 
-  useEffect(() => {
     try {
-      const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
-      const prefersDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-      const next = saved ? saved === "dark" : !!prefersDark;
-      setIsDark(next);
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", next);
+      const saved = localStorage.getItem("theme");
+      if (saved === "dark") return true;
+      if (saved === "light") return false;
     } catch {}
-  }, []);
+
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
 
   useEffect(() => {
     try {
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", isDark);
-      if (typeof window !== "undefined") localStorage.setItem("theme", isDark ? "dark" : "light");
+      document.documentElement.classList.toggle("dark", isDark);
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     } catch {}
   }, [isDark]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+
+    const onChange = (e: MediaQueryListEvent) => {
+      try {
+        const saved = localStorage.getItem("theme");
+        if (saved === "dark" || saved === "light") return;
+      } catch {}
+
+      setIsDark(e.matches);
+    };
+
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
 
   return { isDark, setIsDark };
 }
@@ -107,4 +126,47 @@ export function useGlobalShortcuts(args: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [uploadOpen, exportOpen, notesMode, setNotesMode, onReset, onUndo, onRedo, openUploadDialog, saveFile, openFile]);
+}
+
+/*
+ * useIsMobile
+ * Returns true if the current viewport width is less than the provided rem threshold (default 48rem).
+ * 48rem is commonly 768px when root font-size is 16px, but this hook computes based on the actual root font-size.
+ */
+export function useIsMobile(thresholdRem = 48) {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return false;
+    const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize || "16") || 16;
+    return window.innerWidth < thresholdRem * rootSize;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    let frame: number | null = null;
+
+    const evaluate = () => {
+      frame = null;
+      const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize || "16") || 16;
+      const next = window.innerWidth < thresholdRem * rootSize;
+      setIsMobile((prev) => (prev === next ? prev : next));
+    };
+
+    const onResize = () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(evaluate);
+    };
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    // initial re-check in case hydration width differs
+    onResize();
+
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [thresholdRem]);
+
+  return isMobile;
 }

@@ -1,7 +1,13 @@
 // /src/components/sudoku/grid.tsx
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { cn, neighbor } from "@/lib/utils";
-import { COLOR_BG_CLASS, CORNER_POS_CLASSES, CORNER_POS_ORDER_ALL, SEL_COLOR_VAR } from "@/components/sudoku/constants";
+import {
+  COLOR_BG_CLASS,
+  CORNER_POS_CLASSES,
+  CORNER_POS_ORDER_ALL,
+  SEL_COLOR_VAR,
+  COLOR_ORDER,
+} from "@/components/sudoku/constants";
 import { from36, SG1, SG1_HEADER } from "@/components/sudoku/utils/stateCodec";
 import {
   buildSingleSelection,
@@ -442,6 +448,11 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return true;
       },
       isValid: () => isValidSudoku(),
+      setSolution: () => {},
+      clearSolution: () => {},
+      hasSolution: () => false,
+      captureSolutionFromCurrent: () => false,
+      flashErrors: () => 0,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -640,6 +651,56 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const key = e.key;
 
+      // Ctrl/Meta + A => select entire grid
+      if ((e.ctrlKey || e.metaKey) && (key === "a" || key === "A")) {
+        e.preventDefault();
+        const full = Array.from({ length: size }, () => Array.from({ length: size }, () => true));
+        applySelectionChange(full);
+        // Keep existing current cell if present, else set to first cell
+        const nextCurrent = current ?? ([0, 0] as Cell);
+        applyCurrentChange(nextCurrent);
+        setSelectionStack(stackFromMatrix(full));
+        return;
+      }
+
+      // Color mode keyboard handling
+      if (pencilMode === "color") {
+        // Clear colors
+        if (key === "Backspace" || key === "Delete" || key === "0") {
+          e.preventDefault();
+          const targets = selectionTargets(selection, current);
+          if (!targets.length) return;
+          setColorGrid((prev) => {
+            const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
+            for (const [r, c] of targets) next[r][c] = [];
+            return next;
+          });
+          return;
+        }
+        // Toggle specific color 1..9
+        if (/^[1-9]$/.test(key)) {
+          const val = parseInt(key, 10);
+          // map 1..9 -> COLOR_ORDER[0..8]
+          if (val >= 1 && val <= 9 && val - 1 < COLOR_ORDER.length) {
+            e.preventDefault();
+            const color = COLOR_ORDER[val - 1]!;
+            const targets = selectionTargets(selection, current);
+            if (!targets.length) return;
+            setColorGrid((prev) => {
+              const next = prev.map((row) => row.map((cell) => cell.slice())) as ColorName[][][];
+              for (const [r, c] of targets) {
+                const list = next[r][c];
+                const idx = list.indexOf(color);
+                if (idx >= 0) list.splice(idx, 1);
+                else list.push(color);
+              }
+              return next;
+            });
+            return;
+          }
+        }
+      }
+
       if (key === "Escape") {
         e.preventDefault();
         applySelectionChange(createEmptySelection(size));
@@ -665,8 +726,8 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
         return;
       }
 
-      // 1..9 only (stable UI for size > 9)
-      if (/^[1-9]$/.test(key)) {
+      // 1..9 only (stable UI for size > 9) for digits/notes (non-color modes)
+      if (/^[1-9]$/.test(key) && pencilMode !== "color") {
         const val = parseInt(key, 10);
         if (val >= 1 && val <= Math.min(9, size)) {
           e.preventDefault();
@@ -685,6 +746,9 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
       clearDigitsIn,
       setValueOnTargets,
       toggleDigitIn,
+      current,
+      selection,
+      setColorGrid,
     ],
   );
 
@@ -816,40 +880,40 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
                       {selected && !left && (
                         <span
-                          className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-[4px]"
+                          className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !right && (
                         <span
-                          className="pointer-events-none absolute top-0 right-0 bottom-0 z-20 w-[4px]"
+                          className="pointer-events-none absolute top-0 right-0 bottom-0 z-20 w-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !up && (
                         <span
-                          className="pointer-events-none absolute top-0 right-0 left-0 z-20 h-[4px]"
+                          className="pointer-events-none absolute top-0 right-0 left-0 z-20 h-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !down && (
                         <span
-                          className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 h-[4px]"
+                          className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 h-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
 
                       {selected && topLeft && (
-                        <span className="absolute top-0 left-0 z-20 size-[4px] rounded-br-xs bg-(--sel)" />
+                        <span className="absolute top-0 left-0 z-20 size-1 rounded-br-xs bg-(--sel)" />
                       )}
                       {selected && topRight && (
-                        <span className="absolute top-0 right-0 z-20 size-[4px] rounded-bl-xs bg-(--sel)" />
+                        <span className="absolute top-0 right-0 z-20 size-1 rounded-bl-xs bg-(--sel)" />
                       )}
                       {selected && bottomLeft && (
-                        <span className="absolute bottom-0 left-0 z-20 size-[4px] rounded-tr-xs bg-(--sel)" />
+                        <span className="absolute bottom-0 left-0 z-20 size-1 rounded-tr-xs bg-(--sel)" />
                       )}
                       {selected && bottomRight && (
-                        <span className="absolute right-0 bottom-0 z-20 size-[4px] rounded-tl-xs bg-(--sel)" />
+                        <span className="absolute right-0 bottom-0 z-20 size-1 rounded-tl-xs bg-(--sel)" />
                       )}
 
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}

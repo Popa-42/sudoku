@@ -36,6 +36,12 @@ export type SudokuGridHandle = {
   redo: () => boolean;
   // Validation
   isValid: () => boolean;
+  // Solution management
+  setSolution: (solution: number[][]) => void; // sets intended solution (size x size)
+  clearSolution: () => void;
+  hasSolution: () => boolean;
+  captureSolutionFromCurrent: () => boolean; // capture effective grid as solution; returns false if any zeros
+  flashErrors: () => number; // highlight mismatched user entries vs solution briefly; returns mismatch count
 };
 
 export type Note = "center" | "corner" | "color" | null;
