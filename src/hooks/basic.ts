@@ -2,24 +2,43 @@ import type { Note } from "@/types";
 import { useEffect, useState } from "react";
 
 export function usePersistentDarkMode() {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
 
-  useEffect(() => {
     try {
-      const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
-      const prefersDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-      const next = saved ? saved === "dark" : !!prefersDark;
-      setIsDark(next);
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", next);
+      const saved = localStorage.getItem("theme");
+      if (saved === "dark") return true;
+      if (saved === "light") return false;
     } catch {}
-  }, []);
+
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
 
   useEffect(() => {
     try {
-      if (typeof document !== "undefined") document.documentElement.classList.toggle("dark", isDark);
-      if (typeof window !== "undefined") localStorage.setItem("theme", isDark ? "dark" : "light");
+      document.documentElement.classList.toggle("dark", isDark);
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     } catch {}
   }, [isDark]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+
+    const onChange = (e: MediaQueryListEvent) => {
+      try {
+        const saved = localStorage.getItem("theme");
+        if (saved === "dark" || saved === "light") return;
+      } catch {}
+
+      setIsDark(e.matches);
+    };
+
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
 
   return { isDark, setIsDark };
 }
