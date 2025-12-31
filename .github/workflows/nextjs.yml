@@ -2,9 +2,9 @@ name: Pages (prod + PR previews)
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    types: ["opened", "reopened", "synchronize", "closed"]
+    types: [ "opened", "reopened", "synchronize", "closed" ]
 
 permissions:
   contents: write
@@ -23,11 +23,13 @@ jobs:
       - uses: actions/setup-node@v4
         if: github.event_name == 'push'
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
       - name: Install
         if: github.event_name == 'push'
-        run: npm ci
+        run: |
+          npx next telemetry disable
+          npm ci
       - name: Build (root)
         if: github.event_name == 'push'
         env:
@@ -55,11 +57,13 @@ jobs:
       - uses: actions/setup-node@v4
         if: github.event_name == 'pull_request'
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
       - name: Install
         if: github.event.action != 'closed' && github.event_name == 'pull_request'
-        run: npm ci
+        run: |
+          npx next telemetry disable
+          npm ci
       - name: Build (PR)
         if: github.event.action != 'closed' && github.event_name == 'pull_request'
         env:
