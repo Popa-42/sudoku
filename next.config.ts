@@ -1,13 +1,13 @@
 import type { NextConfig } from "next";
 
-const basePath = process.env.NEXT_BASE_PATH || "";
+const rawBasePath = process.env.NEXT_BASE_PATH || "";
+const basePath = rawBasePath === "" ? "" : rawBasePath.replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["localhorst", "127.0.0.1"],
-  output: "export",
+  output: "standalone",
+  allowedDevOrigins: ["localhost", "127.0.0.1", "::1"],
   images: { unoptimized: true },
   basePath,
-  assetPrefix: basePath ? `${basePath}/` : undefined,
 };
 
 export default nextConfig;
