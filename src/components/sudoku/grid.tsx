@@ -880,40 +880,40 @@ const SudokuGridImpl = React.forwardRef<SudokuGridHandle, SudokuGridProps>(funct
 
                       {selected && !left && (
                         <span
-                          className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-[4px]"
+                          className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !right && (
                         <span
-                          className="pointer-events-none absolute top-0 right-0 bottom-0 z-20 w-[4px]"
+                          className="pointer-events-none absolute top-0 right-0 bottom-0 z-20 w-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !up && (
                         <span
-                          className="pointer-events-none absolute top-0 right-0 left-0 z-20 h-[4px]"
+                          className="pointer-events-none absolute top-0 right-0 left-0 z-20 h-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
                       {selected && !down && (
                         <span
-                          className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 h-[4px]"
+                          className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 h-1"
                           style={{ background: "var(--sel)" }}
                         />
                       )}
 
                       {selected && topLeft && (
-                        <span className="absolute top-0 left-0 z-20 size-[4px] rounded-br-xs bg-(--sel)" />
+                        <span className="absolute top-0 left-0 z-20 size-1 rounded-br-xs bg-(--sel)" />
                       )}
                       {selected && topRight && (
-                        <span className="absolute top-0 right-0 z-20 size-[4px] rounded-bl-xs bg-(--sel)" />
+                        <span className="absolute top-0 right-0 z-20 size-1 rounded-bl-xs bg-(--sel)" />
                       )}
                       {selected && bottomLeft && (
-                        <span className="absolute bottom-0 left-0 z-20 size-[4px] rounded-tr-xs bg-(--sel)" />
+                        <span className="absolute bottom-0 left-0 z-20 size-1 rounded-tr-xs bg-(--sel)" />
                       )}
                       {selected && bottomRight && (
-                        <span className="absolute right-0 bottom-0 z-20 size-[4px] rounded-tl-xs bg-(--sel)" />
+                        <span className="absolute right-0 bottom-0 z-20 size-1 rounded-tl-xs bg-(--sel)" />
                       )}
 
                       {displayVal !== "" && <span className="absolute">{displayVal}</span>}
